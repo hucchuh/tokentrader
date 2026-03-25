@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TokenTrader 交易台</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="bg"></div>
+    <main class="container">
+      <header class="hero">
+        <h1>TokenTrader</h1>
+        <p>把闲置模型 Token 变成可交换的执行力</p>
+      </header>
+
+      <section class="grid">
+        <article class="card">
+          <h2>邮箱注册</h2>
+          <form id="register-form">
+            <input name="name" placeholder="昵称" required />
+            <input name="email" type="email" placeholder="邮箱" required />
+            <input name="password" type="password" placeholder="密码（至少8位）" required />
+            <button type="submit">注册</button>
+          </form>
+        </article>
+
+        <article class="card">
+          <h2>登录</h2>
+          <form id="login-form">
+            <input name="email" type="email" placeholder="邮箱" required />
+            <input name="password" type="password" placeholder="密码" required />
+            <button type="submit">登录</button>
+          </form>
+          <p id="session-status" class="muted">未登录</p>
+        </article>
+      </section>
+
+      <section class="card">
+        <h2>任务报价</h2>
+        <form id="quote-form" class="quote-form">
+          <input name="task_type" placeholder="任务类型（如 code_generation）" value="analysis" required />
+          <input name="prompt_tokens" type="number" min="1" value="1200" required />
+          <input name="max_latency_ms" type="number" min="100" value="1600" required />
+          <input name="budget_credits" type="number" min="0.01" step="0.01" value="1.00" required />
+          <select name="quality_tier">
+            <option value="economy">economy</option>
+            <option value="balanced" selected>balanced</option>
+            <option value="premium">premium</option>
+          </select>
+          <button type="submit">获取报价</button>
+        </form>
+
+        <div id="quote-result" class="result"></div>
+      </section>
+
+      <section class="card">
+        <h2>模拟执行</h2>
+        <form id="exec-form" class="quote-form">
+          <input name="provider" placeholder="provider，例如 provider_b" required />
+          <input name="model" placeholder="model，例如 balanced-llm-v2" required />
+          <button type="submit">执行任务</button>
+        </form>
+        <div id="exec-result" class="result"></div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
