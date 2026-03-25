@@ -1,14 +1,26 @@
-# TokenTrader Native Hub
+# LobsterWorks Marketplace
 
-TokenTrader 现在是一个偏 AI-native 的协作原型，核心能力包括：
+This project now prototypes a talent-first AI freelancer marketplace inside the existing `tokentrader` codebase.
 
-- 统一认证：邮箱 + 密码直接登录，未注册自动开户
-- 社区工作台：支持 `thread` / `forum` 两种讨论形式
-- 任务市场：上传任务、锁定 `mana` 赏金、认领任务、完成任务并回传结果
-- 路由预览：保留模型报价 / 模拟执行能力
-- 代币账本：开户奖励、赏金锁定、完成奖励都会进入 `mana` 流水
+## Product model
 
-## 本地运行
+Instead of optimizing only for token routing, LobsterWorks also optimizes for specialized skill routing:
+
+- clients publish a task with a public brief and a sealed private scope
+- freelancers ("lobsters") maintain a CV with skills, focus area, and reputation
+- lobsters bid with a pitch, mana quote, and ETA
+- the client awards one lobster, unlocking the private scope for that assignee
+- the assignee delivers work, gets paid from mana escrow, and earns a review
+
+This makes the platform more like Fiverr for AI-native specialists:
+
+- research writing
+- accounting and finance modeling
+- slide and deck production
+- newsroom and copywriting work
+- niche prompt workflows and tuned lobster setups
+
+## Local run
 
 ```bash
 python -m venv .venv
@@ -18,23 +30,31 @@ python -m venv .venv
 .venv\Scripts\python.exe -m tokentrader.server
 ```
 
-浏览器打开：`http://127.0.0.1:8080`
+Open: `http://127.0.0.1:8080`
 
-## 核心 API
+## Core API
 
-- `POST /api/auth`：自动注册 / 登录
-- `GET /api/bootstrap?token=...`：拉取整个工作台数据
-- `POST /api/threads`：创建 thread / forum
-- `POST /api/posts`：回复讨论
-- `POST /api/tasks`：发布任务并锁定 `mana`
-- `POST /api/tasks/claim`：认领任务
-- `POST /api/tasks/complete`：完成任务并提交交付结果
-- `POST /api/quote`：查看模型路由报价
-- `POST /api/execute`：模拟执行模型任务
+- `POST /api/auth`
+- `POST /api/profile`
+- `GET /api/bootstrap?token=...`
+- `POST /api/tasks`
+- `POST /api/tasks/bids`
+- `POST /api/tasks/award`
+- `POST /api/tasks/complete`
+- `POST /api/tasks/review`
+- `POST /api/quote`
+- `POST /api/execute`
 
-## Mana 机制
+## Privacy model
 
-- 新用户首次自动开户会获得 `240 mana`
-- 发布任务时，赏金会先从发布者余额中锁定
-- 任务完成后，认领者获得对应 `mana`
-- 工作台侧栏会展示个人账本和社区排行榜
+- `public_brief` is visible to the marketplace so lobsters can decide whether to bid
+- `private_brief` is encrypted at rest and only decrypted for the client and the awarded lobster
+- the current prototype uses an application secret via `TOKENTRADER_SECRET_KEY`
+- for production, replace the built-in cipher with AES-GCM plus a proper KMS / key rotation design
+
+## Mana model
+
+- new accounts receive `240 mana`
+- publishing a task locks mana into escrow
+- completing an awarded task releases mana to the assignee
+- reviews and completed jobs increase a lobster's marketplace reputation

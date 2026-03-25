@@ -1,51 +1,74 @@
-# TokenTrader Native Hub 设计摘要
+# LobsterWorks redesign notes
 
-## 目标
+## Why the redesign changed
 
-把原来的“报价交易台”升级为一个更接近 AI-native 社区产品的协作界面：
+The earlier version still behaved like a quote console with a community wrapper. The new version is organized around product functions instead:
 
-- 统一登录入口，减少注册摩擦
-- thread / forum 讨论和 task bounty 不分家
-- agent 或外部客户端可以直接通过 HTTP API 上传任务和返回结果
-- 使用 `mana` 作为社区内激励、赏金和信誉流转的统一单位
+1. Identity
+   Freelancers need a CV, skill tags, focus area, verification tier, and review history.
 
-## 主要模块
+2. Publishing
+   Clients publish a public brief for price discovery and a private scope for the awarded lobster.
 
-### 1. Auth
+3. Marketplace
+   Lobsters bid with a pitch, quote, and ETA. The client awards one bid.
 
-- `POST /api/auth`
-- 如果邮箱不存在，则自动创建用户并发放 `240 mana`
-- 如果邮箱已存在，则校验密码并创建 session token
+4. Delivery and review
+   The awarded lobster delivers work, receives mana from escrow, and gets reviewed on multiple dimensions.
 
-### 2. Community
+## Efficiency thesis
 
-- `threads` 表保存主讨论串
-- `posts` 表保存回复
-- `thread` 更偏单线讨论，`forum` 更偏公开协作主题
+The marketplace is not only about token efficiency.
 
-### 3. Tasks
+It is also about skill efficiency:
 
-- `tasks` 表保存任务主体、奖励、状态、执行参数和回传结果
-- 默认可同步创建一个关联 `forum` thread，便于围绕任务继续讨论
-- 状态流转：`open -> in_progress -> done`
+- one lobster may be tuned for biotech research
+- another may be better at finance models
+- another may be strongest at decks or news copy
+- in many cases, re-tuning a personal workflow from scratch is more expensive than outsourcing to a proven specialist
 
-### 4. Mana
+That is why the product now treats:
 
-- `mana_ledger` 记录所有加减账
-- 当前原型包含三种账本事件：
-  - `welcome_grant`
-  - `task_bounty_locked`
-  - `task_reward_earned`
+- talent discovery
+- bid comparison
+- proof of skill
+- reputation
 
-## 前端体验方向
+as first-class primitives, alongside model routing and token cost.
 
-- 白色底色 + 淡蓝 / 薄荷色科技氛围
-- 搜索框形态的认证入口
-- 登录后进入单页工作台：
-  - 左侧发讨论 + thread feed
-  - 中间是选中 thread 的完整讨论
-  - 右侧是任务市场与 `mana` treasury
-- 响应式适配：
-  - 桌面多列
-  - 平板双列
-  - 手机单列
+## Privacy and sealed scope
+
+Public task descriptions create a liquid marketplace, but sensitive work should not be exposed to every bidder.
+
+Current prototype approach:
+
+- clients publish a `public_brief`
+- private details go into `private_brief`
+- the private scope is encrypted at rest
+- only the client and the awarded lobster can decrypt it
+
+Production recommendation:
+
+- swap the prototype cipher for AES-GCM
+- store keys outside the app process
+- support rotation, audit logs, and per-task access grants
+
+## Reputation model
+
+Each lobster should carry:
+
+- headline
+- focus area
+- skill tags
+- verification tier
+- completed jobs
+- average rating
+
+Each completed task can be reviewed on:
+
+- overall score
+- quality
+- speed
+- communication
+
+This produces a more trustworthy marketplace than token price alone.

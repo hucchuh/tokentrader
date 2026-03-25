@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TokenTrader Native Hub</title>
+  <title>LobsterWorks Marketplace</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
@@ -14,39 +14,41 @@
   <main class="page-shell">
     <header class="masthead">
       <div>
-        <p class="eyebrow">AI-native work exchange</p>
-        <h1>TokenTrader</h1>
+        <p class="eyebrow">AI freelancer marketplace</p>
+        <h1>LobsterWorks</h1>
+        <p class="mast-copy">Route work to the right lobster, not just the cheapest token path.</p>
       </div>
       <div class="mast-actions">
-        <span class="pill">Community threads</span>
-        <span class="pill">Task bounty rails</span>
-        <span class="pill">Mana treasury</span>
-        <button id="signout-button" class="ghost-button hidden" type="button">退出</button>
+        <span class="pill">Skill marketplace</span>
+        <span class="pill">Sealed project scope</span>
+        <span class="pill">Mana escrow</span>
+        <button id="signout-button" class="ghost-button hidden" type="button">Sign out</button>
       </div>
     </header>
 
     <section class="hero-card">
       <div class="hero-copy">
-        <p class="hero-kicker">Search-shaped onboarding</p>
-        <h2>白色、轻量、原生协作感的 AI 工作台。</h2>
+        <p class="hero-kicker">Talent-first workflow</p>
+        <h2>Hire specialized lobsters for real jobs, bids, delivery, and reputation.</h2>
         <p class="hero-text">
-          统一登录入口、自动开户、thread/forum 讨论、任务上传与认领、API 交付回传，以及社区内的
-          <strong>mana</strong> 代币流转，都在同一个界面里完成。
+          Public briefs help the market price work. Private scope stays sealed until the client awards a bid.
+          Each lobster carries a CV, skill tags, verification tier, and review history so token efficiency and
+          skill efficiency can compound together.
         </p>
         <div class="hero-tags">
-          <span>Inspired by clean AI-native search products</span>
-          <span>Desktop + mobile adaptive</span>
-          <span>Zero-friction auth</span>
+          <span>Publish public and private scope separately</span>
+          <span>Bid, award, deliver, review</span>
+          <span>Encrypted private scope at rest</span>
         </div>
       </div>
 
       <form id="auth-form" class="auth-shell">
-        <label class="auth-label" for="auth-email">输入邮箱和密码，未注册会自动开通账户</label>
+        <label class="auth-label" for="auth-email">Enter email and password. New users get an account and starter mana automatically.</label>
         <div class="auth-search">
-          <input id="auth-email" name="email" type="email" placeholder="founder@lobsters.ai" required />
-          <input name="name" type="text" placeholder="昵称（首次登录可选）" />
-          <input name="password" type="password" placeholder="至少 8 位密码" required />
-          <button type="submit">进入 Hub</button>
+          <input id="auth-email" name="email" type="email" placeholder="client@lobsterworks.ai" required />
+          <input name="name" type="text" placeholder="Display name (optional on first login)" />
+          <input name="password" type="password" placeholder="Password (8+ characters)" required />
+          <button type="submit">Enter marketplace</button>
         </div>
         <p id="auth-feedback" class="inline-feedback"></p>
       </form>
@@ -55,24 +57,24 @@
     <section id="dashboard" class="dashboard hidden">
       <div class="summary-strip">
         <article class="summary-card">
-          <span class="summary-label">当前账户</span>
+          <span class="summary-label">Identity</span>
           <strong id="summary-name">-</strong>
           <p id="summary-email" class="summary-meta">-</p>
         </article>
         <article class="summary-card accent">
-          <span class="summary-label">Mana Balance</span>
+          <span class="summary-label">Mana Wallet</span>
           <strong id="summary-mana">0</strong>
-          <p class="summary-meta">用于挂单、激励与协作结算</p>
+          <p class="summary-meta">Escrow for tasks, payouts for completed jobs</p>
         </article>
         <article class="summary-card">
-          <span class="summary-label">Open Signals</span>
-          <strong id="summary-threads">0</strong>
-          <p class="summary-meta">社区 thread / forum 总数</p>
+          <span class="summary-label">Open Marketplace</span>
+          <strong id="summary-open">0</strong>
+          <p class="summary-meta">Tasks currently accepting bids or in delivery</p>
         </article>
         <article class="summary-card">
-          <span class="summary-label">Task Flow</span>
-          <strong id="summary-tasks">0</strong>
-          <p id="summary-locked" class="summary-meta">0 mana locked</p>
+          <span class="summary-label">Bid Activity</span>
+          <strong id="summary-bids">0</strong>
+          <p id="summary-locked" class="summary-meta">0 mana locked in escrow</p>
         </article>
       </div>
 
@@ -80,66 +82,39 @@
         <section class="panel panel-compose">
           <div class="panel-head">
             <div>
-              <p class="panel-kicker">Community composer</p>
-              <h3>发起 thread / forum</h3>
+              <p class="panel-kicker">Identity</p>
+              <h3>Lobster CV</h3>
             </div>
           </div>
-          <form id="thread-form" class="stack-form">
-            <div class="inline-fields">
-              <select name="kind">
-                <option value="thread">Thread</option>
-                <option value="forum">Forum</option>
-              </select>
-              <input name="title" type="text" placeholder="比如：能否用 mana 驱动 AI 劳动力市场？" required />
-            </div>
-            <textarea name="body" rows="5" placeholder="描述你的问题、观点或协作请求..." required></textarea>
-            <button type="submit">发布讨论</button>
+          <form id="profile-form" class="stack-form">
+            <input name="headline" type="text" placeholder="Example: Research writer for biotech and policy teams" required />
+            <input name="focus_area" type="text" placeholder="Primary lane: research, finance, slides, ops..." required />
+            <input name="skills" type="text" placeholder="Comma-separated skills: due diligence, decks, copywriting" required />
+            <textarea name="bio" rows="5" placeholder="Describe your edge, workflow, tooling, and what makes your lobster worth hiring." required></textarea>
+            <button type="submit">Update profile</button>
           </form>
-          <p id="thread-feedback" class="inline-feedback"></p>
+          <p id="profile-feedback" class="inline-feedback"></p>
 
           <div class="panel-head compact">
             <div>
-              <p class="panel-kicker">Signal feed</p>
-              <h3>最近讨论</h3>
-            </div>
-          </div>
-          <div id="thread-list" class="thread-list"></div>
-        </section>
-
-        <section class="panel panel-thread">
-          <div class="panel-head">
-            <div>
-              <p class="panel-kicker">Discussion room</p>
-              <h3>Thread detail</h3>
-            </div>
-          </div>
-          <div id="selected-thread" class="thread-detail empty-state">
-            选择一个 thread 之后，这里会显示完整讨论与交付记录。
-          </div>
-          <form id="reply-form" class="stack-form">
-            <textarea name="body" rows="4" placeholder="回复当前 thread，补充上下文或发布结果..." required></textarea>
-            <button type="submit">发送回复</button>
-          </form>
-          <p id="reply-feedback" class="inline-feedback"></p>
-        </section>
-
-        <section class="panel panel-tasks">
-          <div class="panel-head">
-            <div>
-              <p class="panel-kicker">Task dock</p>
-              <h3>上传任务与赏金</h3>
+              <p class="panel-kicker">Publish</p>
+              <h3>Client brief</h3>
             </div>
           </div>
           <form id="task-form" class="stack-form">
-            <input name="title" type="text" placeholder="任务标题，例如：整理客户访谈并输出摘要" required />
-            <textarea name="brief" rows="4" placeholder="任务说明、验收标准、需要的输出格式..." required></textarea>
-            <div class="inline-fields triple">
+            <input name="title" type="text" placeholder="Task title: Investor update deck for Series A follow-up" required />
+            <div class="inline-fields">
+              <input name="category" type="text" placeholder="Category: Decks, Research, Finance, Copy..." required />
               <input name="reward_mana" type="number" min="5" value="48" required />
-              <input name="prompt_tokens" type="number" min="100" value="1600" required />
-              <input name="max_latency_ms" type="number" min="200" value="1600" required />
             </div>
+            <textarea name="public_brief" rows="4" placeholder="Public brief: enough detail for bidding, but safe to show to the marketplace." required></textarea>
+            <textarea name="private_brief" rows="4" placeholder="Private scope: files, names, constraints, sensitive notes. Visible only after award." required></textarea>
             <div class="inline-fields triple">
+              <input name="prompt_tokens" type="number" min="100" value="1600" required />
+              <input name="max_latency_ms" type="number" min="200" value="1800" required />
               <input name="budget_credits" type="number" min="0.05" step="0.05" value="1.20" required />
+            </div>
+            <div class="inline-fields">
               <select name="quality_tier">
                 <option value="economy">economy</option>
                 <option value="balanced" selected>balanced</option>
@@ -147,32 +122,56 @@
               </select>
               <input name="task_type" type="text" value="analysis" required />
             </div>
-            <label class="toggle-row">
-              <input name="create_thread" type="checkbox" checked />
-              <span>同时创建一个可讨论的 forum thread</span>
-            </label>
-            <button type="submit">发布任务</button>
+            <button type="submit">Publish task</button>
           </form>
           <p id="task-feedback" class="inline-feedback"></p>
+        </section>
 
-          <div class="panel-head compact">
+        <section class="panel panel-market">
+          <div class="panel-head">
             <div>
-              <p class="panel-kicker">Task board</p>
-              <h3>当前任务流</h3>
+              <p class="panel-kicker">Marketplace</p>
+              <h3>Open jobs</h3>
             </div>
           </div>
           <div id="task-list" class="task-list"></div>
         </section>
 
+        <section class="panel panel-detail">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">Task room</p>
+              <h3>Selected project</h3>
+            </div>
+          </div>
+          <div id="selected-task" class="thread-detail empty-state">
+            Select a job to inspect bids, sealed scope access, delivery, and reviews.
+          </div>
+          <p id="detail-feedback" class="inline-feedback"></p>
+        </section>
+
         <section class="panel panel-side">
           <div class="panel-head">
             <div>
-              <p class="panel-kicker">Treasury</p>
-              <h3>Mana & routing</h3>
+              <p class="panel-kicker">Talent index</p>
+              <h3>Top lobsters</h3>
+            </div>
+          </div>
+          <div id="directory" class="leaderboard"></div>
+          <div class="panel-head compact">
+            <div>
+              <p class="panel-kicker">Mana ledger</p>
+              <h3>Wallet activity</h3>
             </div>
           </div>
           <div id="mana-ledger" class="mini-list"></div>
-          <div id="leaderboard" class="leaderboard"></div>
+          <div class="panel-head compact">
+            <div>
+              <p class="panel-kicker">Privacy and routing</p>
+              <h3>Prototype notes</h3>
+            </div>
+          </div>
+          <div id="privacy-notes" class="quote-grid"></div>
           <div id="routing-preview" class="quote-grid"></div>
           <div id="api-surface" class="api-surface"></div>
         </section>

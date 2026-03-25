@@ -3,77 +3,136 @@ from pathlib import Path
 from tokentrader.service import TokenTraderService
 
 
-def test_auth_auto_registers_and_bootstrap_returns_user_state(tmp_path: Path) -> None:
-    service = TokenTraderService(db_path=str(tmp_path / "test.db"))
+def test_auth_creates_profile_and_starter_mana(tmp_path: Path) -> None:
+    service = TokenTraderService(db_path=str(tmp_path / "auth.db"))
 
     auth = service.auth("alice@example.com", "passw0rd!", "Alice")
-
-    assert auth["created"] is True
-    assert auth["user"]["email"] == "alice@example.com"
-    assert auth["user"]["mana_balance"] == 240
-
     dashboard = service.get_dashboard(auth["token"])
 
-    assert dashboard["user"]["name"] == "Alice"
-    assert dashboard["stats"]["issued_mana"] == 240
-    assert dashboard["threads"] == []
-    assert dashboard["tasks"] == []
+    assert auth["created"] is True
+    assert dashboard["user"]["mana_balance"] == 240
+    assert dashboard["profile"]["headline"] == "General AI freelancer"
+    assert dashboard["stats"]["open_tasks"] == 0
 
 
-def test_task_flow_moves_mana_and_posts_delivery_into_thread(tmp_path: Path) -> None:
-    service = TokenTraderService(db_path=str(tmp_path / "flow.db"))
+def test_profile_update_persists_skills_and_focus_area(tmp_path: Path) -> None:
+    service = TokenTraderService(db_path=str(tmp_path / "profile.db"))
+    auth = service.auth("alice@example.com", "passw0rd!", "Alice")
 
-    creator = service.auth("alice@example.com", "passw0rd!", "Alice")
-    worker = service.auth("bob@example.com", "passw0rd!", "Bob")
-
-    task_data = service.create_task(
-        creator["token"],
+    result = service.update_profile(
+        auth["token"],
         {
-            "title": "Create customer synthesis",
-            "brief": "Review uploaded interviews and return a concise synthesis with action items.",
-            "reward_mana": 60,
-            "prompt_tokens": 1600,
-            "max_latency_ms": 1600,
-            "budget_credits": 1.2,
-            "quality_tier": "balanced",
-            "task_type": "analysis",
-            "create_thread": True,
+            "headline": "Biotech research writer",
+            "bio": "I turn messy source material into board-ready research notes and executive memos.",
+            "focus_area": "Research",
+            "skills": "biotech, memos, due diligence",
         },
     )
 
-    task_id = task_data["task"]["id"]
-    thread_id = task_data["task"]["thread_id"]
+    assert result["profile"]["focus_area"] == "Research"
+    assert result["profile"]["skills"] == ["biotech", "memos", "due diligence"]
 
-    creator_dashboard = service.get_dashboard(creator["token"], thread_id=thread_id)
-    assert creator_dashboard["user"]["mana_balance"] == 180
-    assert creator_dashboard["tasks"][0]["status"] == "open"
 
-    claimed = service.claim_task(worker["token"], {"task_id": task_id})
-    assert claimed["task"]["status"] == "in_progress"
-    assert claimed["task"]["assignee"]["name"] == "Bob"
+def test_private_scope_is_hidden_until_a_bid_is_awarded(tmp_path: Path) -> None:
+    service = TokenTraderService(db_path=str(tmp_path / "privacy.db"))
+    creator = service.auth("client@example.com", "passw0rd!", "Client")
+    bidder = service.auth("seller@example.com", "passw0rd!", "Seller")
 
-    completed = service.complete_task(
-        worker["token"],
+    created = service.create_task(
+        creator["token"],
+        {
+            "title": "Prepare a board memo",
+            "category": "Research",
+            "public_brief": "Need a bid for a board memo based on a confidential diligence package.",
+            "private_brief": "The target company, stakeholders, and red flags are confidential until award.",
+            "reward_mana": 60,
+            "prompt_tokens": 1600,
+            "max_latency_ms": 1700,
+            "budget_credits": 1.2,
+            "quality_tier": "balanced",
+            "task_type": "analysis",
+        },
+    )
+
+    task_id = created["task"]["id"]
+    before_award = service.get_dashboard(bidder["token"], task_id=task_id)["selected_task"]
+    assert before_award["private_brief"] is None
+    assert "Sealed" in before_award["private_scope_status"]
+
+    service.submit_bid(
+        bidder["token"],
         {
             "task_id": task_id,
-            "deliverable": "Uploaded the synthesis deck and returned three product action items.",
-            "external_ref": "https://example.com/result",
+            "pitch": "I have shipped diligence memos for venture and public market teams before.",
+            "quote_mana": 58,
+            "eta_days": 2,
+        },
+    )
+    creator_view = service.get_dashboard(creator["token"], task_id=task_id)["selected_task"]
+    bid_id = creator_view["bids"][0]["id"]
+    service.award_bid(creator["token"], {"task_id": task_id, "bid_id": bid_id})
+
+    after_award = service.get_dashboard(bidder["token"], task_id=task_id)["selected_task"]
+    assert "confidential" in after_award["private_brief"]
+
+
+def test_bid_award_complete_and_review_update_reputation(tmp_path: Path) -> None:
+    service = TokenTraderService(db_path=str(tmp_path / "flow.db"))
+    creator = service.auth("client@example.com", "passw0rd!", "Client")
+    bidder = service.auth("seller@example.com", "passw0rd!", "Seller")
+
+    created = service.create_task(
+        creator["token"],
+        {
+            "title": "Build a finance model",
+            "category": "Finance",
+            "public_brief": "Looking for a freelancer to build a clean operating model for a marketplace startup.",
+            "private_brief": "Private scope includes actual revenue data, payroll assumptions, and cap table notes.",
+            "reward_mana": 70,
+            "prompt_tokens": 1800,
+            "max_latency_ms": 1800,
+            "budget_credits": 1.4,
+            "quality_tier": "premium",
+            "task_type": "spreadsheet",
+        },
+    )
+    task_id = created["task"]["id"]
+    service.submit_bid(
+        bidder["token"],
+        {
+            "task_id": task_id,
+            "pitch": "I build operator-friendly models with assumptions tabs, scenarios, and board-ready outputs.",
+            "quote_mana": 70,
+            "eta_days": 3,
+        },
+    )
+
+    task_for_creator = service.get_dashboard(creator["token"], task_id=task_id)["selected_task"]
+    service.award_bid(creator["token"], {"task_id": task_id, "bid_id": task_for_creator["bids"][0]["id"]})
+    completed = service.complete_task(
+        bidder["token"],
+        {
+            "task_id": task_id,
+            "deliverable": "Delivered a three-statement model, scenario view, and one-page assumption summary.",
+            "external_ref": "https://example.com/model",
         },
     )
 
     assert completed["task"]["status"] == "done"
-    assert completed["task"]["deliverable"].startswith("Uploaded the synthesis")
 
-    worker_dashboard = service.get_dashboard(worker["token"], thread_id=thread_id)
-    assert worker_dashboard["user"]["mana_balance"] == 300
-    assert worker_dashboard["selected_thread"]["posts"][-1]["body"].startswith("Uploaded the synthesis")
+    reviewed = service.review_task(
+        creator["token"],
+        {
+            "task_id": task_id,
+            "overall_score": 4.9,
+            "quality_score": 5.0,
+            "speed_score": 4.7,
+            "communication_score": 4.8,
+            "comment": "Strong freelancer with clean assumptions, fast iterations, and a board-ready finish.",
+        },
+    )
 
-
-def test_register_duplicate_email(tmp_path: Path) -> None:
-    service = TokenTraderService(db_path=str(tmp_path / "dup.db"))
-    service.register_user("bob@example.com", "passw0rd!", "Bob")
-    try:
-        service.register_user("bob@example.com", "passw0rd!", "Bobby")
-        assert False, "expected ValueError"
-    except ValueError as exc:
-        assert "已注册" in str(exc)
+    assert reviewed["task"]["review"]["overall_score"] == 4.9
+    seller_dashboard = service.get_dashboard(bidder["token"])
+    assert seller_dashboard["user"]["mana_balance"] == 310
+    assert seller_dashboard["profile"]["verification_level"] == "Rated"
