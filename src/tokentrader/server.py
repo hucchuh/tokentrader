@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 from http import HTTPStatus
@@ -30,38 +30,99 @@ class AppHandler(SimpleHTTPRequestHandler):
         return json.loads(raw.decode("utf-8"))
 
     def do_GET(self) -> None:
-        parsed = urlparse(self.path)
-        if parsed.path == "/api/profile":
-            token = parse_qs(parsed.query).get("token", [""])[0]
-            user = service.get_user_by_token(token)
-            if not user:
-                self._json_response(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": "未登录"})
+        try:
+            parsed = urlparse(self.path)
+            query = parse_qs(parsed.query)
+
+            if parsed.path == "/api/profile":
+                token = query.get("token", [""])[0]
+                user = service.get_user_by_token(token)
+                if not user:
+                    self._json_response(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": "未登录"})
+                    return
+                self._json_response(HTTPStatus.OK, {"ok": True, "user": user})
                 return
-            self._json_response(HTTPStatus.OK, {"ok": True, "user": user})
-            return
-        if parsed.path == "/":
-            self.path = "/index.html"
-        return super().do_GET()
+
+            if parsed.path == "/api/bootstrap":
+                token = query.get("token", [""])[0]
+                thread_raw = query.get("thread_id", [""])[0]
+                thread_id = int(thread_raw) if thread_raw.isdigit() else None
+                data = service.get_dashboard(token, thread_id=thread_id)
+                self._json_response(HTTPStatus.OK, {"ok": True, **data})
+                return
+
+            if parsed.path == "/":
+                self.path = "/index.html"
+            return super().do_GET()
+        except ValueError as exc:
+            self._json_response(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)})
+        except PermissionError as exc:
+            self._json_response(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": str(exc)})
+        except Exception:
+            self._json_response(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "服务内部错误"})
 
     def do_POST(self) -> None:
         try:
             payload = self._read_json_body()
+
+            if self.path == "/api/auth":
+                auth = service.auth(
+                    str(payload.get("email", "")),
+                    str(payload.get("password", "")),
+                    str(payload.get("name", "")),
+                )
+                self._json_response(HTTPStatus.OK, {"ok": True, **auth})
+                return
+
             if self.path == "/api/register":
-                user = service.register_user(str(payload.get("email", "")), str(payload.get("password", "")), str(payload.get("name", "")))
+                user = service.register_user(
+                    str(payload.get("email", "")),
+                    str(payload.get("password", "")),
+                    str(payload.get("name", "")),
+                )
                 self._json_response(HTTPStatus.CREATED, {"ok": True, "user": user})
                 return
+
             if self.path == "/api/login":
                 auth = service.login(str(payload.get("email", "")), str(payload.get("password", "")))
                 self._json_response(HTTPStatus.OK, {"ok": True, **auth})
                 return
+
+            if self.path == "/api/threads":
+                data = service.create_thread(str(payload.get("token", "")), payload)
+                self._json_response(HTTPStatus.CREATED, {"ok": True, **data})
+                return
+
+            if self.path == "/api/posts":
+                data = service.create_post(str(payload.get("token", "")), payload)
+                self._json_response(HTTPStatus.CREATED, {"ok": True, **data})
+                return
+
+            if self.path == "/api/tasks":
+                data = service.create_task(str(payload.get("token", "")), payload)
+                self._json_response(HTTPStatus.CREATED, {"ok": True, **data})
+                return
+
+            if self.path == "/api/tasks/claim":
+                data = service.claim_task(str(payload.get("token", "")), payload)
+                self._json_response(HTTPStatus.OK, {"ok": True, **data})
+                return
+
+            if self.path == "/api/tasks/complete":
+                data = service.complete_task(str(payload.get("token", "")), payload)
+                self._json_response(HTTPStatus.OK, {"ok": True, **data})
+                return
+
             if self.path == "/api/quote":
                 data = service.build_quote_for_user(str(payload.get("token", "")), payload)
                 self._json_response(HTTPStatus.OK, {"ok": True, **data})
                 return
+
             if self.path == "/api/execute":
                 data = service.execute_for_user(str(payload.get("token", "")), payload)
                 self._json_response(HTTPStatus.OK, {"ok": True, **data})
                 return
+
             self._json_response(HTTPStatus.NOT_FOUND, {"ok": False, "error": "接口不存在"})
         except ValueError as exc:
             self._json_response(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)})

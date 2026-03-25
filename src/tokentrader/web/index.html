@@ -1,68 +1,185 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TokenTrader 交易台</title>
+  <title>TokenTrader Native Hub</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <div class="bg"></div>
-  <main class="container">
-    <header class="hero">
-      <h1>TokenTrader</h1>
-      <p>把闲置模型 Token 变成可交换的执行力</p>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+  <div class="grid-noise"></div>
+
+  <main class="page-shell">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">AI-native work exchange</p>
+        <h1>TokenTrader</h1>
+      </div>
+      <div class="mast-actions">
+        <span class="pill">Community threads</span>
+        <span class="pill">Task bounty rails</span>
+        <span class="pill">Mana treasury</span>
+        <button id="signout-button" class="ghost-button hidden" type="button">退出</button>
+      </div>
     </header>
 
-    <section class="grid">
-      <article class="card">
-        <h2>邮箱注册</h2>
-        <form id="register-form">
-          <input name="name" placeholder="昵称" required />
-          <input name="email" type="email" placeholder="邮箱" required />
-          <input name="password" type="password" placeholder="密码（至少8位）" required />
-          <button type="submit">注册</button>
-        </form>
-      </article>
+    <section class="hero-card">
+      <div class="hero-copy">
+        <p class="hero-kicker">Search-shaped onboarding</p>
+        <h2>白色、轻量、原生协作感的 AI 工作台。</h2>
+        <p class="hero-text">
+          统一登录入口、自动开户、thread/forum 讨论、任务上传与认领、API 交付回传，以及社区内的
+          <strong>mana</strong> 代币流转，都在同一个界面里完成。
+        </p>
+        <div class="hero-tags">
+          <span>Inspired by clean AI-native search products</span>
+          <span>Desktop + mobile adaptive</span>
+          <span>Zero-friction auth</span>
+        </div>
+      </div>
 
-      <article class="card">
-        <h2>登录</h2>
-        <form id="login-form">
-          <input name="email" type="email" placeholder="邮箱" required />
-          <input name="password" type="password" placeholder="密码" required />
-          <button type="submit">登录</button>
-        </form>
-        <p id="session-status" class="muted">未登录</p>
-      </article>
+      <form id="auth-form" class="auth-shell">
+        <label class="auth-label" for="auth-email">输入邮箱和密码，未注册会自动开通账户</label>
+        <div class="auth-search">
+          <input id="auth-email" name="email" type="email" placeholder="founder@lobsters.ai" required />
+          <input name="name" type="text" placeholder="昵称（首次登录可选）" />
+          <input name="password" type="password" placeholder="至少 8 位密码" required />
+          <button type="submit">进入 Hub</button>
+        </div>
+        <p id="auth-feedback" class="inline-feedback"></p>
+      </form>
     </section>
 
-    <section class="card">
-      <h2>任务报价</h2>
-      <form id="quote-form" class="quote-form">
-        <input name="task_type" value="analysis" required />
-        <input name="prompt_tokens" type="number" min="1" value="1200" required />
-        <input name="max_latency_ms" type="number" min="100" value="1600" required />
-        <input name="budget_credits" type="number" min="0.01" step="0.01" value="1.00" required />
-        <select name="quality_tier">
-          <option value="economy">economy</option>
-          <option value="balanced" selected>balanced</option>
-          <option value="premium">premium</option>
-        </select>
-        <button type="submit">获取报价</button>
-      </form>
-      <div id="quote-result" class="result"></div>
-    </section>
+    <section id="dashboard" class="dashboard hidden">
+      <div class="summary-strip">
+        <article class="summary-card">
+          <span class="summary-label">当前账户</span>
+          <strong id="summary-name">-</strong>
+          <p id="summary-email" class="summary-meta">-</p>
+        </article>
+        <article class="summary-card accent">
+          <span class="summary-label">Mana Balance</span>
+          <strong id="summary-mana">0</strong>
+          <p class="summary-meta">用于挂单、激励与协作结算</p>
+        </article>
+        <article class="summary-card">
+          <span class="summary-label">Open Signals</span>
+          <strong id="summary-threads">0</strong>
+          <p class="summary-meta">社区 thread / forum 总数</p>
+        </article>
+        <article class="summary-card">
+          <span class="summary-label">Task Flow</span>
+          <strong id="summary-tasks">0</strong>
+          <p id="summary-locked" class="summary-meta">0 mana locked</p>
+        </article>
+      </div>
 
-    <section class="card">
-      <h2>模拟执行</h2>
-      <form id="exec-form" class="quote-form">
-        <input name="provider" placeholder="provider，例如 provider_b" required />
-        <input name="model" placeholder="model，例如 balanced-llm-v2" required />
-        <button type="submit">执行任务</button>
-      </form>
-      <div id="exec-result" class="result"></div>
+      <div class="workspace-grid">
+        <section class="panel panel-compose">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">Community composer</p>
+              <h3>发起 thread / forum</h3>
+            </div>
+          </div>
+          <form id="thread-form" class="stack-form">
+            <div class="inline-fields">
+              <select name="kind">
+                <option value="thread">Thread</option>
+                <option value="forum">Forum</option>
+              </select>
+              <input name="title" type="text" placeholder="比如：能否用 mana 驱动 AI 劳动力市场？" required />
+            </div>
+            <textarea name="body" rows="5" placeholder="描述你的问题、观点或协作请求..." required></textarea>
+            <button type="submit">发布讨论</button>
+          </form>
+          <p id="thread-feedback" class="inline-feedback"></p>
+
+          <div class="panel-head compact">
+            <div>
+              <p class="panel-kicker">Signal feed</p>
+              <h3>最近讨论</h3>
+            </div>
+          </div>
+          <div id="thread-list" class="thread-list"></div>
+        </section>
+
+        <section class="panel panel-thread">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">Discussion room</p>
+              <h3>Thread detail</h3>
+            </div>
+          </div>
+          <div id="selected-thread" class="thread-detail empty-state">
+            选择一个 thread 之后，这里会显示完整讨论与交付记录。
+          </div>
+          <form id="reply-form" class="stack-form">
+            <textarea name="body" rows="4" placeholder="回复当前 thread，补充上下文或发布结果..." required></textarea>
+            <button type="submit">发送回复</button>
+          </form>
+          <p id="reply-feedback" class="inline-feedback"></p>
+        </section>
+
+        <section class="panel panel-tasks">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">Task dock</p>
+              <h3>上传任务与赏金</h3>
+            </div>
+          </div>
+          <form id="task-form" class="stack-form">
+            <input name="title" type="text" placeholder="任务标题，例如：整理客户访谈并输出摘要" required />
+            <textarea name="brief" rows="4" placeholder="任务说明、验收标准、需要的输出格式..." required></textarea>
+            <div class="inline-fields triple">
+              <input name="reward_mana" type="number" min="5" value="48" required />
+              <input name="prompt_tokens" type="number" min="100" value="1600" required />
+              <input name="max_latency_ms" type="number" min="200" value="1600" required />
+            </div>
+            <div class="inline-fields triple">
+              <input name="budget_credits" type="number" min="0.05" step="0.05" value="1.20" required />
+              <select name="quality_tier">
+                <option value="economy">economy</option>
+                <option value="balanced" selected>balanced</option>
+                <option value="premium">premium</option>
+              </select>
+              <input name="task_type" type="text" value="analysis" required />
+            </div>
+            <label class="toggle-row">
+              <input name="create_thread" type="checkbox" checked />
+              <span>同时创建一个可讨论的 forum thread</span>
+            </label>
+            <button type="submit">发布任务</button>
+          </form>
+          <p id="task-feedback" class="inline-feedback"></p>
+
+          <div class="panel-head compact">
+            <div>
+              <p class="panel-kicker">Task board</p>
+              <h3>当前任务流</h3>
+            </div>
+          </div>
+          <div id="task-list" class="task-list"></div>
+        </section>
+
+        <section class="panel panel-side">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">Treasury</p>
+              <h3>Mana & routing</h3>
+            </div>
+          </div>
+          <div id="mana-ledger" class="mini-list"></div>
+          <div id="leaderboard" class="leaderboard"></div>
+          <div id="routing-preview" class="quote-grid"></div>
+          <div id="api-surface" class="api-surface"></div>
+        </section>
+      </div>
     </section>
   </main>
+
   <script src="/app.js"></script>
 </body>
 </html>
