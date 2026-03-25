@@ -20,8 +20,9 @@ PROFILE_SKILLS_LIMIT = 8
 
 
 class TokenTraderService:
-    def __init__(self, db_path: str = "tokentrader.db") -> None:
+    def __init__(self, db_path: str = "tokentrader.db", seed_demo: bool = False) -> None:
         self.db_path = db_path
+        self.seed_demo = seed_demo
         Path(db_path).resolve().parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
@@ -194,6 +195,8 @@ class TokenTraderService:
                 """
             )
             self._ensure_profiles(conn)
+            if self.seed_demo:
+                self._seed_demo_marketplace(conn)
 
     @staticmethod
     def _utcnow() -> datetime:
@@ -210,7 +213,7 @@ class TokenTraderService:
             return cleaned
         local = email.split("@", maxsplit=1)[0].replace(".", " ").replace("_", " ").strip()
         local = " ".join(part for part in local.split() if part)
-        return local.title() if len(local) >= 2 else "Lobster"
+        return local.title() if len(local) >= 2 else "Claw"
 
     def _validate_credentials(self, email: str, password: str) -> tuple[str, str]:
         normalized_email = self._normalize_email(email)
@@ -461,6 +464,250 @@ class TokenTraderService:
                 user_id,
             ),
         )
+
+    def _demo_user(
+        self,
+        conn: sqlite3.Connection,
+        email: str,
+        name: str,
+        headline: str,
+        focus_area: str,
+        skills: list[str],
+        bio: str,
+        mana_balance: int,
+        verification_level: str,
+        avg_rating: float,
+        completed_jobs: int,
+        total_reviews: int,
+    ) -> int:
+        row = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+        now = self._utcnow().isoformat()
+        if row:
+            user_id = int(row["id"])
+        else:
+            cur = conn.execute(
+                """
+                INSERT INTO users (email, name, password_hash, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (email, name, self._hash_password("passw0rd!"), now),
+            )
+            user_id = int(cur.lastrowid)
+        if not conn.execute("SELECT 1 FROM profiles WHERE user_id = ?", (user_id,)).fetchone():
+            conn.execute(
+                """
+                INSERT INTO profiles (
+                    user_id,
+                    headline,
+                    bio,
+                    skills_json,
+                    focus_area,
+                    verification_level,
+                    completed_jobs,
+                    avg_rating,
+                    total_reviews,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    headline,
+                    bio,
+                    json.dumps(skills, ensure_ascii=True),
+                    focus_area,
+                    verification_level,
+                    completed_jobs,
+                    avg_rating,
+                    total_reviews,
+                    now,
+                    now,
+                ),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE profiles
+                SET headline = ?, bio = ?, skills_json = ?, focus_area = ?, verification_level = ?,
+                    completed_jobs = ?, avg_rating = ?, total_reviews = ?, updated_at = ?
+                WHERE user_id = ?
+                """,
+                (
+                    headline,
+                    bio,
+                    json.dumps(skills, ensure_ascii=True),
+                    focus_area,
+                    verification_level,
+                    completed_jobs,
+                    avg_rating,
+                    total_reviews,
+                    now,
+                    user_id,
+                ),
+            )
+        if not conn.execute("SELECT 1 FROM mana_ledger WHERE user_id = ? AND reason = 'welcome_grant'", (user_id,)).fetchone():
+            self._add_ledger_entry(conn, user_id, mana_balance, "welcome_grant", "user", user_id)
+        return user_id
+
+    def _seed_demo_marketplace(self, conn: sqlite3.Connection) -> None:
+        task_count = conn.execute("SELECT COUNT(*) AS c FROM tasks").fetchone()["c"]
+        if int(task_count) > 0:
+            return
+        client_id = self._demo_user(
+            conn,
+            "studio@clawdsourcing.test",
+            "Studio Ops",
+            "Product and operations team posting specialist work",
+            "Operations",
+            ["ops", "briefing", "vendor management"],
+            "Publishes work that needs a specialist claw instead of an internal retrain cycle.",
+            1000,
+            "Verified",
+            4.8,
+            6,
+            6,
+        )
+        self._demo_user(
+            conn,
+            "researcher@clawdsourcing.test",
+            "Mira Finch",
+            "Biotech and policy research writer",
+            "Research",
+            ["research", "memos", "due diligence"],
+            "Turns technical material into decision-ready research notes and board memos.",
+            480,
+            "Top Rated",
+            4.9,
+            18,
+            15,
+        )
+        self._demo_user(
+            conn,
+            "finance@clawdsourcing.test",
+            "Anton Vale",
+            "Finance model builder for startup and marketplace teams",
+            "Finance",
+            ["forecasting", "excel", "pricing"],
+            "Builds clean operator-friendly models with assumptions, scenarios, and hiring plans.",
+            420,
+            "Rated",
+            4.7,
+            11,
+            9,
+        )
+        self._demo_user(
+            conn,
+            "slides@clawdsourcing.test",
+            "June Halo",
+            "Deck, narrative, and launch copy specialist",
+            "Storytelling",
+            ["decks", "copywriting", "launches"],
+            "Ships board decks, sales narratives, and launch assets fast.",
+            360,
+            "Rated",
+            4.8,
+            14,
+            12,
+        )
+        now = self._utcnow().isoformat()
+        demos = [
+            {
+                "title": "Series A follow-up deck refresh",
+                "category": "Decks",
+                "public_brief": "Need a claw to turn raw traction notes into a sharp investor follow-up deck for warm leads.",
+                "private_brief": "Private scope includes the current deck, metrics sheet, investor names, and sensitive pricing updates.",
+                "reward_mana": 72,
+                "prompt_tokens": 1800,
+                "max_latency_ms": 1700,
+                "budget_credits": 1.35,
+                "quality_tier": "premium",
+                "task_type": "presentation",
+                "provider": "provider_c",
+                "model": "premium-llm-x",
+            },
+            {
+                "title": "Customer interview synthesis for product strategy",
+                "category": "Research",
+                "public_brief": "Looking for someone to distill 12 interviews into patterns, objections, and product recommendations.",
+                "private_brief": "Private scope includes transcript excerpts, customer names, roadmap assumptions, and churn notes.",
+                "reward_mana": 58,
+                "prompt_tokens": 1600,
+                "max_latency_ms": 1600,
+                "budget_credits": 1.15,
+                "quality_tier": "balanced",
+                "task_type": "analysis",
+                "provider": "provider_b",
+                "model": "balanced-llm-v2",
+            },
+            {
+                "title": "Marketplace unit economics model",
+                "category": "Finance",
+                "public_brief": "Need a freelancer to build a simple but credible unit economics and hiring model for a marketplace pitch.",
+                "private_brief": "Private scope includes payroll assumptions, CAC experiments, vendor payouts, and run-rate metrics.",
+                "reward_mana": 80,
+                "prompt_tokens": 1700,
+                "max_latency_ms": 1800,
+                "budget_credits": 1.4,
+                "quality_tier": "premium",
+                "task_type": "spreadsheet",
+                "provider": "provider_c",
+                "model": "premium-llm-x",
+            },
+        ]
+        for demo in demos:
+            cur = conn.execute(
+                """
+                INSERT INTO tasks (
+                    thread_id,
+                    creator_id,
+                    assignee_id,
+                    title,
+                    brief,
+                    public_brief,
+                    private_brief_ciphertext,
+                    category,
+                    visibility,
+                    status,
+                    reward_mana,
+                    prompt_tokens,
+                    max_latency_ms,
+                    budget_credits,
+                    quality_tier,
+                    provider,
+                    model,
+                    deliverable,
+                    external_ref,
+                    accepted_bid_id,
+                    review_submitted,
+                    task_type,
+                    created_at,
+                    updated_at,
+                    completed_at
+                )
+                VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 'sealed_after_award', 'open', ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 0, ?, ?, ?, NULL)
+                """,
+                (
+                    None,
+                    client_id,
+                    demo["title"],
+                    demo["public_brief"],
+                    demo["public_brief"],
+                    self._encrypt_text(demo["private_brief"]),
+                    demo["category"],
+                    demo["reward_mana"],
+                    demo["prompt_tokens"],
+                    demo["max_latency_ms"],
+                    demo["budget_credits"],
+                    demo["quality_tier"],
+                    demo["provider"],
+                    demo["model"],
+                    demo["task_type"],
+                    now,
+                    now,
+                ),
+            )
+            self._add_ledger_entry(conn, client_id, -int(demo["reward_mana"]), "task_bounty_locked", "task", int(cur.lastrowid))
 
     def _serialize_bid(self, row: sqlite3.Row, viewer_id: int, task_creator_id: int) -> dict:
         bidder_profile = {
@@ -779,7 +1026,7 @@ class TokenTraderService:
                     for offer in DEFAULT_OFFERS
                 ],
                 "privacy_notes": [
-                    "Public briefs are visible to all lobsters.",
+                    "Public briefs are visible to all claws.",
                     "Private scope is sealed until the creator awards a bid.",
                     "Private scope is encrypted at rest with an application secret in this prototype.",
                     "For production, replace the built-in cipher with AES-GCM plus KMS-backed key rotation.",
@@ -967,7 +1214,7 @@ class TokenTraderService:
             if not task:
                 raise ValueError("Task not found.")
             if task["assignee_id"] != user["id"] or task["status"] != "awarded":
-                raise PermissionError("Only the awarded lobster can complete this task.")
+                raise PermissionError("Only the awarded claw can complete this task.")
             route_provider = str(payload.get("provider") or task["provider"] or "").strip()
             route_model = str(payload.get("model") or task["model"] or "").strip()
             route_result = None

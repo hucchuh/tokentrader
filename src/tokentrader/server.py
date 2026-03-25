@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlparse
 from .service import TokenTraderService
 
 WEB_ROOT = Path(__file__).resolve().parent / "web"
-service = TokenTraderService(db_path=str(Path("data") / "tokentrader.db"))
+service = TokenTraderService(db_path=str(Path("data") / "tokentrader.db"), seed_demo=True)
 
 
 class AppHandler(SimpleHTTPRequestHandler):
@@ -50,6 +50,8 @@ class AppHandler(SimpleHTTPRequestHandler):
                 return
             if parsed.path == "/":
                 self.path = "/index.html"
+            if parsed.path == "/app":
+                self.path = "/app.html"
             return super().do_GET()
         except ValueError as exc:
             self._json_response(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)})
