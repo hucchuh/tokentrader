@@ -261,6 +261,61 @@ textarea {
   margin-top: 18px;
 }
 
+.session-banner {
+  display: grid;
+  gap: 14px;
+  margin: 8px 0 18px;
+  padding: 14px 16px;
+  border-radius: 22px;
+  border: 1px solid rgba(10, 104, 255, 0.12);
+  background: linear-gradient(180deg, rgba(248, 251, 255, 0.96), rgba(243, 249, 255, 0.9));
+}
+
+.session-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.session-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 0 0 6px rgba(10, 104, 255, 0.08);
+}
+
+.session-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.session-actions.compact {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.text-button {
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.text-button:hover {
+  color: var(--text);
+}
+
+.auth-caption {
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
 .app-shell {
   position: relative;
   z-index: 1;
@@ -305,7 +360,13 @@ textarea {
 }
 
 .sidebar-footer {
+  display: grid;
+  gap: 10px;
   margin-top: auto;
+}
+
+.sidebar-footer .ghost-button {
+  width: 100%;
 }
 
 .app-main {

@@ -15,6 +15,7 @@ const state = {
 const refs = {
   loading: document.querySelector("#loading-state"),
   sidebarUser: document.querySelector("#sidebar-user"),
+  homeButton: document.querySelector("#home-button"),
   signoutButton: document.querySelector("#signout-button"),
   navLinks: Array.from(document.querySelectorAll(".nav-link")),
   views: Array.from(document.querySelectorAll(".view-panel")),
@@ -432,6 +433,10 @@ window.addEventListener("hashchange", () => {
 refs.signoutButton.addEventListener("click", () => {
   localStorage.removeItem("tt_token");
   window.location.replace("/");
+});
+
+refs.homeButton.addEventListener("click", () => {
+  window.location.assign("/");
 });
 
 refs.profileForm.addEventListener("submit", async (event) => {

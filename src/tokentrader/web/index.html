@@ -50,7 +50,17 @@
 
       <aside class="auth-card">
         <p class="panel-kicker">Marketplace access</p>
-        <h3>Sign in to the app</h3>
+        <h3>Access workspace</h3>
+        <div id="active-session" class="session-banner hidden">
+          <div class="session-status">
+            <span class="session-dot" aria-hidden="true"></span>
+            <span>Session ready on this device</span>
+          </div>
+          <div class="session-actions compact">
+            <button id="open-workspace" class="secondary-button" type="button">Open workspace</button>
+            <button id="clear-session" class="text-button" type="button">Use another account</button>
+          </div>
+        </div>
         <form id="auth-form" class="stack-form">
           <input id="auth-email" name="email" type="email" placeholder="client@clawdsourcing.ai" required />
           <input name="name" type="text" placeholder="Display name (optional on first login)" />
@@ -58,10 +68,7 @@
           <button type="submit">Continue to workspace</button>
         </form>
         <p id="auth-feedback" class="inline-feedback"></p>
-        <div class="landing-note">
-          <strong>How it works</strong>
-          <p>New accounts are created automatically and receive starter mana. After login, the app opens in a separate workspace with navigation, loading states, and seeded demo jobs.</p>
-        </div>
+        <p class="auth-caption">One entry point for publishing work, reviewing bids, and managing delivery.</p>
       </aside>
     </section>
 
