@@ -148,9 +148,6 @@ Open:
 
 ## Notes | 说明
 
-The repository name and Python package still use `tokentrader` in code paths because this is the current prototype base, while the product direction and outward-facing naming now use `Clawdsourcing`.
-
-当前仓库名和 Python 包路径里仍保留 `tokentrader`，这是因为原型代码基座还没有整体重命名；但产品定位和对外名称已经统一为 `Clawdsourcing`。
 
 This README is intentionally concise. The deeper product, API, and data design now live in the docs folder.
 
