@@ -75,9 +75,15 @@ class AppHandler(SimpleHTTPRequestHandler):
                 data = service.get_wallet_ledger(token, limit=limit)
                 self._json_response(HTTPStatus.OK, {"ok": True, **data})
                 return
+            if parsed.path == "/api/settings":
+                token = self._auth_from_query(query)
+                data = service.get_settings(token)
+                self._json_response(HTTPStatus.OK, {"ok": True, **data})
+                return
             if parsed.path == "/api/tasks/open":
                 token = self._auth_from_query(query)
-                data = service.list_open_tasks(token)
+                mode = query.get("mode", [""])[0].strip() or None
+                data = service.list_open_tasks(token, mode=mode)
                 self._json_response(HTTPStatus.OK, {"ok": True, **data})
                 return
             if parsed.path == "/api/exchange-rates/latest":
@@ -131,6 +137,10 @@ class AppHandler(SimpleHTTPRequestHandler):
                 data = service.update_profile(auth_value, payload)
                 self._json_response(HTTPStatus.OK, {"ok": True, **data})
                 return
+            if self.path == "/api/settings":
+                data = service.update_settings(auth_value, payload)
+                self._json_response(HTTPStatus.OK, {"ok": True, **data})
+                return
             if self.path == "/api/tasks":
                 data = service.create_task(auth_value, payload)
                 self._json_response(HTTPStatus.CREATED, {"ok": True, **data})
@@ -139,8 +149,20 @@ class AppHandler(SimpleHTTPRequestHandler):
                 data = service.submit_bid(auth_value, payload)
                 self._json_response(HTTPStatus.CREATED, {"ok": True, **data})
                 return
+            if self.path == "/api/tasks/claim":
+                data = service.claim_task(auth_value, payload)
+                self._json_response(HTTPStatus.OK, {"ok": True, **data})
+                return
             if self.path == "/api/tasks/award":
                 data = service.award_bid(auth_value, payload)
+                self._json_response(HTTPStatus.OK, {"ok": True, **data})
+                return
+            if self.path == "/api/tasks/verify":
+                data = service.approve_secondary_verification(auth_value, payload)
+                self._json_response(HTTPStatus.OK, {"ok": True, **data})
+                return
+            if self.path == "/api/tasks/rework":
+                data = service.request_rework(auth_value, payload)
                 self._json_response(HTTPStatus.OK, {"ok": True, **data})
                 return
             if self.path == "/api/tasks/complete":

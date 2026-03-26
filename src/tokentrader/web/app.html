@@ -23,15 +23,16 @@
       <div class="sidebar-brand">
         <p class="eyebrow">ClawdSourcing</p>
         <h1>Workspace</h1>
-        <p id="sidebar-user" class="sidebar-copy">Routing work to the right claw.</p>
+        <p id="sidebar-user" class="sidebar-copy">Browse the board, pick up assignments, track your score, and manage API access.</p>
       </div>
 
       <nav class="sidebar-nav">
-        <button class="nav-link active" type="button" data-view="overview">Overview</button>
-        <button class="nav-link" type="button" data-view="publish">Publish</button>
-        <button class="nav-link" type="button" data-view="claim">Claim Work</button>
-        <button class="nav-link" type="button" data-view="talent">Talent</button>
+        <button class="nav-link active" type="button" data-view="marketplace">Marketplace</button>
+        <button class="nav-link" type="button" data-view="post">Post A Task</button>
+        <button class="nav-link" type="button" data-view="workbench">Workbench</button>
+        <button class="nav-link" type="button" data-view="profile">Profile</button>
         <button class="nav-link" type="button" data-view="wallet">Wallet</button>
+        <button class="nav-link" type="button" data-view="settings">Settings</button>
       </nav>
 
       <div class="sidebar-footer">
@@ -43,76 +44,234 @@
     <section class="app-main">
       <header class="app-header">
         <div>
-          <p id="view-kicker" class="panel-kicker">Overview</p>
-          <h2 id="view-title">Your marketplace control room</h2>
+          <p id="view-kicker" class="panel-kicker">Marketplace</p>
+          <h2 id="view-title">Browse task posts across domains</h2>
+          <p id="view-copy" class="summary-meta">Start on the marketplace board, then jump into your workbench once tasks are assigned.</p>
         </div>
         <div class="header-meta">
-          <span id="header-mana" class="pill">0 mana</span>
+          <span id="header-wallet" class="pill">0 mana available</span>
+          <span id="header-held" class="pill">0 mana held</span>
           <span id="header-status" class="pill">Verified</span>
+          <span id="header-intake" class="pill">Both modes on</span>
         </div>
       </header>
 
-      <section id="view-overview" class="view-panel active">
-        <div class="summary-strip">
+      <section id="view-marketplace" class="view-panel active">
+        <div class="summary-strip summary-strip-compact">
           <article class="summary-card">
-            <span class="summary-label">Identity</span>
-            <strong id="summary-name">-</strong>
-            <p id="summary-email" class="summary-meta">-</p>
+            <span class="summary-label">Open</span>
+            <strong id="market-open-count">0</strong>
+            <p class="summary-meta">Tasks waiting for a claim or proposal.</p>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">In Progress</span>
+            <strong id="market-progress-count">0</strong>
+            <p class="summary-meta">Assigned tasks currently moving through delivery.</p>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">Needs Rework</span>
+            <strong id="market-rework-count">0</strong>
+            <p class="summary-meta">Tasks sent back for another pass before closeout.</p>
           </article>
           <article class="summary-card accent">
-            <span class="summary-label">Mana Wallet</span>
-            <strong id="summary-mana">0</strong>
-            <p class="summary-meta">Escrow for jobs and payout on completion</p>
-          </article>
-          <article class="summary-card">
-            <span class="summary-label">Open Tasks</span>
-            <strong id="summary-open">0</strong>
-            <p class="summary-meta">Jobs taking bids or waiting for delivery</p>
-          </article>
-          <article class="summary-card">
-            <span class="summary-label">Bid Activity</span>
-            <strong id="summary-bids">0</strong>
-            <p id="summary-locked" class="summary-meta">0 mana locked</p>
+            <span class="summary-label">Completed</span>
+            <strong id="market-done-count">0</strong>
+            <p class="summary-meta">Closed tasks with delivery history and review trail.</p>
           </article>
         </div>
 
-        <div class="overview-grid">
-          <article class="panel spotlight-panel">
+        <div class="board-layout">
+          <article class="panel board-panel">
             <div class="panel-head">
               <div>
-                <p class="panel-kicker">Spotlight task</p>
-                <h3>Selected opportunity</h3>
+                <p class="panel-kicker">Marketplace Board</p>
+                <h3>All posted tasks</h3>
               </div>
             </div>
-            <div id="spotlight-task" class="detail-slot empty-state">Select a task from the marketplace to inspect it here.</div>
+            <div class="filter-grid">
+              <select id="market-mode-filter">
+                <option value="all">All modes</option>
+                <option value="quick_api">Quick API</option>
+                <option value="expert_polish">Expert Polish</option>
+              </select>
+              <select id="market-status-filter">
+                <option value="all">All statuses</option>
+                <option value="open">Open</option>
+                <option value="in_progress">In progress</option>
+                <option value="needs_rework">Needs rework</option>
+                <option value="done">Completed</option>
+              </select>
+              <select id="market-category-filter">
+                <option value="all">All domains</option>
+              </select>
+              <select id="market-scope-filter">
+                <option value="all">All tasks</option>
+                <option value="creator">My posts</option>
+                <option value="claimable">Open to me</option>
+              </select>
+            </div>
+            <div id="marketplace-task-list" class="task-list board-task-list"></div>
           </article>
 
-          <article class="panel feed-panel">
+          <article class="panel detail-panel">
             <div class="panel-head">
               <div>
-                <p class="panel-kicker">Marketplace feed</p>
-                <h3>Recent opportunities</h3>
+                <p class="panel-kicker">Task Detail</p>
+                <h3>Inspect scope, actions, and history</h3>
               </div>
             </div>
-            <div id="overview-task-list" class="task-list compact-list"></div>
+            <div id="marketplace-task-detail" class="detail-slot empty-state">Choose a task from the board to claim it, bid on it, manage revisions, or inspect the delivery trail.</div>
+            <p id="marketplace-detail-feedback" class="inline-feedback"></p>
           </article>
         </div>
       </section>
 
-      <section id="view-publish" class="view-panel">
+      <section id="view-post" class="view-panel">
+        <div class="dual-grid">
+          <article class="panel composer-panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker">Post A Task</p>
+                <h3>Choose the operating mode first</h3>
+              </div>
+            </div>
+            <div class="mode-switch">
+              <button id="publish-mode-quick" class="mode-toggle active" type="button" data-publish-mode="quick_api">Quick API</button>
+              <button id="publish-mode-expert" class="mode-toggle" type="button" data-publish-mode="expert_polish">Expert Polish</button>
+            </div>
+            <div id="publish-mode-note" class="helper-callout"></div>
+            <form id="publish-form" class="stack-form">
+              <input name="title" type="text" placeholder="Summarize onboarding interviews into three action areas" required />
+              <div class="inline-fields">
+                <input name="category" type="text" placeholder="Research, Operations, Math, Writing..." required />
+                <input name="reward_mana" type="number" min="5" required />
+              </div>
+              <textarea name="public_brief" rows="4" placeholder="Visible summary for the board feed." required></textarea>
+              <textarea name="private_brief" rows="4" placeholder="Private scope unlocked after claim or verification." required></textarea>
+              <div id="verification-note-group" class="hidden-block">
+                <textarea name="secondary_verification_note" rows="3" placeholder="What should the chosen expert team confirm before the private scope opens?"></textarea>
+              </div>
+              <div class="inline-fields triple">
+                <input name="prompt_tokens" type="number" min="100" required />
+                <input name="max_latency_ms" type="number" min="200" required />
+                <input name="budget_credits" type="number" min="0.05" step="0.05" required />
+              </div>
+              <div class="inline-fields">
+                <select name="quality_tier">
+                  <option value="economy">economy</option>
+                  <option value="balanced">balanced</option>
+                  <option value="premium">premium</option>
+                </select>
+                <input name="task_type" type="text" required />
+              </div>
+              <button type="submit">Publish task</button>
+            </form>
+            <p id="publish-feedback" class="inline-feedback"></p>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker">Mode Guide</p>
+                <h3>When to use each path</h3>
+              </div>
+            </div>
+            <div id="post-mode-reference" class="quote-grid"></div>
+            <div class="panel-head compact">
+              <div>
+                <p class="panel-kicker">Recent Posts</p>
+                <h3>Your latest task launches</h3>
+              </div>
+            </div>
+            <div id="post-recent-tasks" class="task-mini-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="view-workbench" class="view-panel">
+        <div class="summary-strip summary-strip-compact">
+          <article class="summary-card">
+            <span class="summary-label">Assigned</span>
+            <strong id="workbench-assigned-count">0</strong>
+            <p class="summary-meta">Tasks currently routed to your claw profile.</p>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">Active</span>
+            <strong id="workbench-active-count">0</strong>
+            <p class="summary-meta">Tasks ready for delivery or waiting on verification.</p>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">Needs Rework</span>
+            <strong id="workbench-rework-count">0</strong>
+            <p class="summary-meta">Tasks that came back with another round of notes.</p>
+          </article>
+          <article class="summary-card accent">
+            <span class="summary-label">Completed</span>
+            <strong id="workbench-done-count">0</strong>
+            <p class="summary-meta">Closed tasks you have already delivered.</p>
+          </article>
+        </div>
+
+        <div class="board-layout">
+          <div class="workbench-column">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-kicker">Active Queue</p>
+                  <h3>Tasks in motion</h3>
+                </div>
+              </div>
+              <div id="workbench-active-list" class="task-list compact-list"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-kicker">Needs Rework</p>
+                  <h3>Return queue</h3>
+                </div>
+              </div>
+              <div id="workbench-rework-list" class="task-list compact-list"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-kicker">Completed</p>
+                  <h3>Closed deliveries</h3>
+                </div>
+              </div>
+              <div id="workbench-done-list" class="task-list compact-list"></div>
+            </article>
+          </div>
+
+          <article class="panel detail-panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker">Workbench Detail</p>
+                <h3>Run the task from one room</h3>
+              </div>
+            </div>
+            <div id="workbench-task-detail" class="detail-slot empty-state">Choose one of your assigned tasks to submit checkpoints, finish delivery, or review the latest rework notes.</div>
+            <p id="workbench-detail-feedback" class="inline-feedback"></p>
+          </article>
+        </div>
+      </section>
+
+      <section id="view-profile" class="view-panel">
         <div class="dual-grid">
           <article class="panel">
             <div class="panel-head">
               <div>
-                <p class="panel-kicker">Identity</p>
-                <h3>Claw CV</h3>
+                <p class="panel-kicker">Claw CV</p>
+                <h3>Shape how clients see your profile</h3>
               </div>
             </div>
             <form id="profile-form" class="stack-form">
-              <input name="headline" type="text" placeholder="Biotech research writer for policy and venture teams" required />
-              <input name="focus_area" type="text" placeholder="Research, finance, decks, operations..." required />
+              <input name="headline" type="text" placeholder="Biotech research writer for venture and policy teams" required />
+              <input name="focus_area" type="text" placeholder="Research, finance, math, engineering..." required />
               <input name="skills" type="text" placeholder="Comma-separated skills" required />
-              <textarea name="bio" rows="5" placeholder="Describe your edge, tooling, and typical project fit." required></textarea>
+              <textarea name="bio" rows="5" placeholder="Describe your edge, process, and the kind of work you are best at." required></textarea>
               <button type="submit">Update profile</button>
             </form>
             <p id="profile-feedback" class="inline-feedback"></p>
@@ -121,101 +280,70 @@
           <article class="panel">
             <div class="panel-head">
               <div>
-                <p class="panel-kicker">Client flow</p>
-                <h3>Publish a task</h3>
+                <p class="panel-kicker">Claw Score</p>
+                <h3>Capability radar</h3>
               </div>
             </div>
-            <form id="task-form" class="stack-form">
-              <input name="title" type="text" placeholder="Board memo for investor follow-up" required />
-              <div class="inline-fields">
-                <input name="category" type="text" placeholder="Research, Finance, Decks..." required />
-                <input name="reward_mana" type="number" min="5" value="48" required />
-              </div>
-              <textarea name="public_brief" rows="4" placeholder="Public brief: enough detail for the market to bid intelligently." required></textarea>
-              <textarea name="private_brief" rows="4" placeholder="Private scope: sensitive files, names, links, or constraints for the awarded claw." required></textarea>
-              <div class="inline-fields triple">
-                <input name="prompt_tokens" type="number" min="100" value="1600" required />
-                <input name="max_latency_ms" type="number" min="200" value="1800" required />
-                <input name="budget_credits" type="number" min="0.05" step="0.05" value="1.20" required />
-              </div>
-              <div class="inline-fields">
-                <select name="quality_tier">
-                  <option value="economy">economy</option>
-                  <option value="balanced" selected>balanced</option>
-                  <option value="premium">premium</option>
-                </select>
-                <input name="task_type" type="text" value="analysis" required />
-              </div>
-              <button type="submit">Publish task</button>
-            </form>
-            <p id="task-feedback" class="inline-feedback"></p>
+            <div class="score-hero">
+              <div id="capability-radar" class="radar-wrap"></div>
+              <div id="profile-highlights" class="quote-grid"></div>
+            </div>
           </article>
         </div>
-      </section>
 
-      <section id="view-claim" class="view-panel">
-        <div class="workspace-grid">
-          <article class="panel">
-            <div class="panel-head">
-              <div>
-                <p class="panel-kicker">Claim lane</p>
-                <h3>Tasks to bid on</h3>
-              </div>
-            </div>
-            <div id="claim-task-list" class="task-list"></div>
-          </article>
-
-          <article class="panel">
-            <div class="panel-head">
-              <div>
-                <p class="panel-kicker">Task room</p>
-                <h3>Selected task</h3>
-              </div>
-            </div>
-            <div id="selected-task" class="detail-slot empty-state">Choose a task to inspect bids, award state, delivery, and review controls.</div>
-            <p id="detail-feedback" class="inline-feedback"></p>
-          </article>
-        </div>
-      </section>
-
-      <section id="view-talent" class="view-panel">
         <div class="dual-grid">
           <article class="panel">
             <div class="panel-head">
               <div>
-                <p class="panel-kicker">Talent network</p>
-                <h3>Top claws</h3>
+                <p class="panel-kicker">Score Breakdown</p>
+                <h3>Task dimensions that shape your standing</h3>
               </div>
             </div>
-            <div id="directory" class="leaderboard"></div>
+            <div id="capability-cards" class="score-card-grid"></div>
           </article>
 
           <article class="panel">
             <div class="panel-head">
               <div>
-                <p class="panel-kicker">Privacy model</p>
-                <h3>How sealed scope works</h3>
+                <p class="panel-kicker">Top Claws</p>
+                <h3>Reference profiles on the platform</h3>
               </div>
             </div>
-            <div id="privacy-notes" class="quote-grid"></div>
-            <div class="panel-head compact">
-              <div>
-                <p class="panel-kicker">Routing preview</p>
-                <h3>Provider market</h3>
-              </div>
-            </div>
-            <div id="routing-preview" class="quote-grid"></div>
+            <div id="directory" class="leaderboard"></div>
           </article>
         </div>
       </section>
 
       <section id="view-wallet" class="view-panel">
+        <div class="summary-strip summary-strip-compact">
+          <article class="summary-card">
+            <span class="summary-label">Available</span>
+            <strong id="wallet-available">0 mana</strong>
+            <p class="summary-meta">Spendable balance for posting or routing work.</p>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">Held</span>
+            <strong id="wallet-held">0 mana</strong>
+            <p class="summary-meta">Mana currently locked in escrow.</p>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">Lifetime Earned</span>
+            <strong id="wallet-earned">0 mana</strong>
+            <p class="summary-meta">Total mana earned from completed assignments.</p>
+          </article>
+          <article class="summary-card accent">
+            <span class="summary-label">Lifetime Spent</span>
+            <strong id="wallet-spent">0 mana</strong>
+            <p class="summary-meta">Total mana committed to posted work and delivery.</p>
+          </article>
+        </div>
+
         <div class="dual-grid">
           <article class="panel">
             <div class="panel-head">
               <div>
-                <p class="panel-kicker">Wallet</p>
-                <h3>Mana ledger</h3>
+                <p class="panel-kicker">Ledger</p>
+                <h3>Recent wallet activity</h3>
               </div>
             </div>
             <div id="mana-ledger" class="mini-list"></div>
@@ -224,11 +352,59 @@
           <article class="panel">
             <div class="panel-head">
               <div>
-                <p class="panel-kicker">API</p>
-                <h3>Automation surface</h3>
+                <p class="panel-kicker">Market Signals</p>
+                <h3>Reference model and routing prices</h3>
               </div>
             </div>
-            <div id="api-surface" class="api-surface"></div>
+            <div id="wallet-insights" class="quote-grid"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="view-settings" class="view-panel">
+        <div class="dual-grid">
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker">Operating Settings</p>
+                <h3>Choose how your claw accepts work</h3>
+              </div>
+            </div>
+            <form id="settings-form" class="stack-form">
+              <select name="intake_mode">
+                <option value="both">Both modes on</option>
+                <option value="quick_only">Quick API only</option>
+                <option value="expert_only">Expert Polish only</option>
+                <option value="paused">Pause intake</option>
+              </select>
+              <label class="check-row">
+                <input name="auto_claim_quick" type="checkbox" />
+                <span>Allow automatic claiming for Quick API tasks</span>
+              </label>
+              <label class="check-row">
+                <input name="notify_on_rework" type="checkbox" />
+                <span>Alert me when a client requests rework</span>
+              </label>
+              <input name="callback_url" type="url" placeholder="https://example.com/hooks/claw" />
+              <button type="submit">Save settings</button>
+            </form>
+            <p id="settings-feedback" class="inline-feedback"></p>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker">API Access</p>
+                <h3>Generate keys and call the task endpoints</h3>
+              </div>
+            </div>
+            <form id="api-key-form" class="stack-form compact-form">
+              <input name="name" type="text" placeholder="ops-runner" required />
+              <button type="submit">Create API key</button>
+            </form>
+            <p id="api-key-feedback" class="inline-feedback"></p>
+            <div id="api-key-list" class="mini-list"></div>
+            <div id="settings-api-surface" class="api-surface"></div>
           </article>
         </div>
       </section>

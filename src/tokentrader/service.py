@@ -21,6 +21,59 @@ PROFILE_SKILLS_LIMIT = 8
 MANA_PER_CREDIT = 12
 PRICING_QUOTE_TTL_MINUTES = 30
 DEFAULT_API_KEY_SCOPES = ["tasks:read", "tasks:claim", "tasks:submit", "wallet:read"]
+QUICK_API_MODE = "quick_api"
+EXPERT_POLISH_MODE = "expert_polish"
+TASK_STATUS_OPEN = "open"
+TASK_STATUS_VERIFYING = "verifying"
+TASK_STATUS_AWARDED = "awarded"
+TASK_STATUS_NEEDS_REWORK = "needs_rework"
+TASK_STATUS_DONE = "done"
+MODE_CATALOG = {
+    QUICK_API_MODE: {
+        "label": "Quick API",
+        "tagline": "Claim instantly, run locally, and send the result back fast.",
+        "description": "Built for quick-and-dirty API execution without a second verification step.",
+        "claim_style": "instant_claim",
+        "requires_secondary_verification": False,
+        "delivery_channel": "api_submission",
+        "publish_defaults": {
+            "reward_mana": 42,
+            "prompt_tokens": 1200,
+            "max_latency_ms": 1400,
+            "budget_credits": 0.9,
+            "quality_tier": QualityTier.BALANCED.value,
+            "task_type": "analysis",
+        },
+        "workflow": [
+            "Publish a concise brief and sealed scope.",
+            "A claw claims the lane instantly through the API.",
+            "The claw submits drafts or a final result through the task endpoint.",
+            "Escrow releases on completion and review.",
+        ],
+    },
+    EXPERT_POLISH_MODE: {
+        "label": "Expert Polish",
+        "tagline": "Shortlist the best claw team, then unlock the real scope after verification.",
+        "description": "Designed for high-stakes work that needs stronger talent matching and a second verification step.",
+        "claim_style": "proposal_shortlist",
+        "requires_secondary_verification": True,
+        "delivery_channel": "managed_delivery",
+        "publish_defaults": {
+            "reward_mana": 96,
+            "prompt_tokens": 2200,
+            "max_latency_ms": 2600,
+            "budget_credits": 1.9,
+            "quality_tier": QualityTier.PREMIUM.value,
+            "task_type": "analysis",
+        },
+        "workflow": [
+            "Publish a public brief that invites specialist proposals.",
+            "Experts bid with approach, quote, and ETA.",
+            "The client selects a team and approves a second verification step.",
+            "Only then does the sealed scope open for the final delivery run.",
+        ],
+    },
+}
 
 
 class TokenTraderService:
@@ -75,10 +128,10 @@ class TokenTraderService:
                 """,
                 (
                     row["id"],
-                    "General AI freelancer",
-                    f"{row['name']} can bid on specialized AI work.",
+                    "Independent claw operator",
+                    f"{row['name']} is ready to take on quick API work and specialist projects.",
                     json.dumps([], ensure_ascii=True),
-                    "Generalist",
+                    "Open to multiple categories",
                     "Verified",
                     now,
                     now,
@@ -110,6 +163,147 @@ class TokenTraderService:
                 """,
                 (row["id"], now),
             )
+
+    def _ensure_user_settings(self, conn: sqlite3.Connection) -> None:
+        missing = conn.execute(
+            """
+            SELECT u.id
+            FROM users u
+            LEFT JOIN user_settings s ON s.user_id = u.id
+            WHERE s.user_id IS NULL
+            """
+        ).fetchall()
+        now = self._utcnow().isoformat()
+        for row in missing:
+            conn.execute(
+                """
+                INSERT INTO user_settings (
+                    user_id,
+                    intake_mode,
+                    quick_api_enabled,
+                    expert_polish_enabled,
+                    auto_claim_quick,
+                    notify_on_rework,
+                    callback_url,
+                    updated_at
+                )
+                VALUES (?, 'both', 1, 1, 0, 1, NULL, ?)
+                """,
+                (row["id"], now),
+            )
+
+    def _normalize_engagement_mode(self, value: str | None) -> str:
+        normalized = str(value or QUICK_API_MODE).strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "quick": QUICK_API_MODE,
+            "quickapi": QUICK_API_MODE,
+            "expert": EXPERT_POLISH_MODE,
+            "expertpolish": EXPERT_POLISH_MODE,
+            "polish": EXPERT_POLISH_MODE,
+        }
+        mode = aliases.get(normalized, normalized)
+        if mode not in MODE_CATALOG:
+            raise ValueError("Unknown engagement mode.")
+        return mode
+
+    def _mode_profile(self, mode: str) -> dict:
+        normalized = self._normalize_engagement_mode(mode)
+        config = MODE_CATALOG[normalized]
+        return {
+            "id": normalized,
+            "label": config["label"],
+            "tagline": config["tagline"],
+            "description": config["description"],
+            "claim_style": config["claim_style"],
+            "requires_secondary_verification": config["requires_secondary_verification"],
+            "delivery_channel": config["delivery_channel"],
+            "publish_defaults": dict(config["publish_defaults"]),
+            "workflow": list(config["workflow"]),
+        }
+
+    def _load_user_settings(self, conn: sqlite3.Connection, user_id: int) -> dict:
+        row = conn.execute("SELECT * FROM user_settings WHERE user_id = ?", (user_id,)).fetchone()
+        if not row:
+            self._ensure_user_settings(conn)
+            row = conn.execute("SELECT * FROM user_settings WHERE user_id = ?", (user_id,)).fetchone()
+        return {
+            "intake_mode": row["intake_mode"],
+            "quick_api_enabled": bool(row["quick_api_enabled"]),
+            "expert_polish_enabled": bool(row["expert_polish_enabled"]),
+            "auto_claim_quick": bool(row["auto_claim_quick"]),
+            "notify_on_rework": bool(row["notify_on_rework"]),
+            "callback_url": row["callback_url"] or "",
+            "updated_at": row["updated_at"],
+        }
+
+    @staticmethod
+    def _truthy(value: object) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    @staticmethod
+    def _derive_intake_mode(quick_enabled: bool, expert_enabled: bool) -> str:
+        if quick_enabled and expert_enabled:
+            return "both"
+        if quick_enabled:
+            return "quick_only"
+        if expert_enabled:
+            return "expert_only"
+        return "paused"
+
+    def _normalize_intake_mode(self, value: str | None) -> str:
+        normalized = str(value or "both").strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "all": "both",
+            "both": "both",
+            "quick": "quick_only",
+            "quick_only": "quick_only",
+            "expert": "expert_only",
+            "expert_only": "expert_only",
+            "paused": "paused",
+            "off": "paused",
+        }
+        mode = aliases.get(normalized, normalized)
+        if mode not in {"both", "quick_only", "expert_only", "paused"}:
+            raise ValueError("Unknown intake mode.")
+        return mode
+
+    def _profile_capability_scores(self, conn: sqlite3.Connection, user_id: int) -> dict:
+        review = conn.execute(
+            """
+            SELECT
+                COALESCE(AVG(overall_score), 0) AS overall_avg,
+                COALESCE(AVG(quality_score), 0) AS quality_avg,
+                COALESCE(AVG(speed_score), 0) AS speed_avg,
+                COALESCE(AVG(communication_score), 0) AS communication_avg,
+                COALESCE(AVG(requirement_fit_score), 0) AS fit_avg,
+                COUNT(*) AS review_count
+            FROM task_reviews
+            WHERE reviewee_id = ?
+            """,
+            (user_id,),
+        ).fetchone()
+        profile = self._load_profile(conn, user_id)
+        completed_jobs = int(profile["completed_jobs"])
+        review_count = int(review["review_count"])
+        credibility_bonus = min(18, completed_jobs * 3 + review_count * 2)
+
+        def scaled(score: float, baseline: int = 58) -> int:
+            if score <= 0:
+                return baseline
+            return max(35, min(96, int(round(score * 20))))
+
+        return {
+            "logic": scaled((float(review["quality_avg"]) + float(review["fit_avg"])) / 2 or 0),
+            "diligence": min(96, scaled(float(review["overall_avg"]) or 0, baseline=60) + credibility_bonus // 3),
+            "timeliness": scaled(float(review["speed_avg"]) or 0, baseline=56),
+            "communication": scaled(float(review["communication_avg"]) or 0, baseline=57),
+            "specialization": min(96, scaled(float(review["fit_avg"]) or 0, baseline=60) + credibility_bonus // 2),
+            "reliability": min(96, scaled(float(review["overall_avg"]) or 0, baseline=59) + credibility_bonus),
+        }
 
     def _init_db(self) -> None:
         with self._connect() as conn:
@@ -233,6 +427,18 @@ class TokenTraderService:
                     FOREIGN KEY(user_id) REFERENCES users(id)
                 );
 
+                CREATE TABLE IF NOT EXISTS user_settings (
+                    user_id INTEGER PRIMARY KEY,
+                    intake_mode TEXT NOT NULL DEFAULT 'both',
+                    quick_api_enabled INTEGER NOT NULL DEFAULT 1,
+                    expert_polish_enabled INTEGER NOT NULL DEFAULT 1,
+                    auto_claim_quick INTEGER NOT NULL DEFAULT 0,
+                    notify_on_rework INTEGER NOT NULL DEFAULT 1,
+                    callback_url TEXT,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                );
+
                 CREATE TABLE IF NOT EXISTS external_token_catalog (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     token_code TEXT NOT NULL UNIQUE,
@@ -317,7 +523,13 @@ class TokenTraderService:
             self._ensure_column(conn, "tasks", "accepted_bid_id", "INTEGER")
             self._ensure_column(conn, "tasks", "review_submitted", "INTEGER NOT NULL DEFAULT 0")
             self._ensure_column(conn, "tasks", "task_type", "TEXT NOT NULL DEFAULT 'general'")
+            self._ensure_column(conn, "tasks", "engagement_mode", f"TEXT NOT NULL DEFAULT '{QUICK_API_MODE}'")
+            self._ensure_column(conn, "tasks", "secondary_verification_required", "INTEGER NOT NULL DEFAULT 0")
+            self._ensure_column(conn, "tasks", "secondary_verification_status", "TEXT NOT NULL DEFAULT 'not_required'")
+            self._ensure_column(conn, "tasks", "secondary_verification_note", "TEXT")
+            self._ensure_column(conn, "tasks", "rework_note", "TEXT")
             self._ensure_column(conn, "tasks", "effective_quote_id", "INTEGER")
+            self._ensure_column(conn, "pricing_quotes", "engagement_mode", f"TEXT NOT NULL DEFAULT '{QUICK_API_MODE}'")
             self._ensure_column(conn, "task_reviews", "requirement_fit_score", "REAL")
             conn.execute(
                 """
@@ -333,8 +545,42 @@ class TokenTraderService:
                 WHERE requirement_fit_score IS NULL
                 """
             )
+            conn.execute(
+                """
+                UPDATE tasks
+                SET secondary_verification_status = CASE
+                    WHEN secondary_verification_required = 1 AND status = 'awarded' THEN 'approved'
+                    WHEN secondary_verification_required = 1 THEN 'pending'
+                    ELSE 'not_required'
+                END
+                WHERE secondary_verification_status IS NULL OR secondary_verification_status = ''
+                """
+            )
+            conn.execute(
+                """
+                UPDATE profiles
+                SET headline = 'Independent claw operator'
+                WHERE headline = 'General AI freelancer'
+                """
+            )
+            conn.execute(
+                """
+                UPDATE profiles
+                SET focus_area = 'Open to multiple categories'
+                WHERE focus_area = 'Generalist'
+                """
+            )
+            conn.execute(
+                """
+                UPDATE profiles
+                SET bio = 'Ready to take on quick API work and specialist projects.'
+                WHERE bio LIKE '%can bid on specialized AI work.%'
+                   OR bio LIKE '%can take on AI production work.%'
+                """
+            )
             self._ensure_profiles(conn)
             self._ensure_wallets(conn)
+            self._ensure_user_settings(conn)
             self._seed_exchange_data(conn)
             wallet_rows = conn.execute("SELECT user_id FROM wallets").fetchall()
             for row in wallet_rows:
@@ -518,7 +764,10 @@ class TokenTraderService:
             ],
         }
 
-    def _pricing_preview_from_order(self, conn: sqlite3.Connection, order: TaskOrder) -> dict:
+    def _pricing_preview_from_order(
+        self, conn: sqlite3.Connection, order: TaskOrder, engagement_mode: str = QUICK_API_MODE
+    ) -> dict:
+        mode = self._normalize_engagement_mode(engagement_mode)
         quote = build_quote(order)
         costs_mana = [int(ceil(item.estimated_cost_credits * MANA_PER_CREDIT)) for item in quote.candidates]
         if not costs_mana:
@@ -531,14 +780,41 @@ class TokenTraderService:
             QualityTier.BALANCED.value: 2,
             QualityTier.PREMIUM.value: 5,
         }[order.quality_tier.value]
+        specialist_premium_mana = 0
+        verification_buffer_mana = 0
         risk_buffer_mana = max(2, int(ceil(estimated_max * 0.15)))
         platform_fee_mana = 2
-        recommended_min = estimated_max + labor_mana + tier_bonus + risk_buffer_mana + platform_fee_mana
-        recommended_max = recommended_min + max(4, labor_mana + tier_bonus)
-        minimum_publish_mana = max(5, estimated_min + labor_mana + risk_buffer_mana + platform_fee_mana)
+        pricing_model = "api_cost_plus_execution"
+        if mode == EXPERT_POLISH_MODE:
+            pricing_model = "specialist_verification_premium"
+            specialist_premium_mana = max(12, int(ceil((estimated_max + labor_mana + tier_bonus) * 0.45)))
+            verification_buffer_mana = max(6, int(ceil((estimated_max + labor_mana) * 0.18)))
+            risk_buffer_mana = max(risk_buffer_mana, int(ceil(estimated_max * 0.22)))
+            platform_fee_mana = 6
+        recommended_min = (
+            estimated_max
+            + labor_mana
+            + tier_bonus
+            + risk_buffer_mana
+            + platform_fee_mana
+            + specialist_premium_mana
+            + verification_buffer_mana
+        )
+        recommended_max = recommended_min + max(4, labor_mana + tier_bonus + max(0, specialist_premium_mana // 2))
+        minimum_publish_mana = max(
+            5,
+            estimated_min
+            + labor_mana
+            + risk_buffer_mana
+            + platform_fee_mana
+            + verification_buffer_mana
+            + max(0, specialist_premium_mana // 2),
+        )
         snapshot = self._latest_exchange_snapshot_row(conn)
         valid_until = self._utcnow() + timedelta(minutes=PRICING_QUOTE_TTL_MINUTES)
         return {
+            "engagement_mode": mode,
+            "pricing_model": pricing_model,
             "recommended_mana_min": recommended_min,
             "recommended_mana_max": recommended_max,
             "minimum_publish_mana": minimum_publish_mana,
@@ -546,13 +822,18 @@ class TokenTraderService:
             "estimated_external_cost_mana_max": estimated_max,
             "risk_buffer_mana": risk_buffer_mana,
             "platform_fee_mana": platform_fee_mana,
+            "specialist_premium_mana": specialist_premium_mana,
+            "verification_buffer_mana": verification_buffer_mana,
             "exchange_rate_snapshot_id": snapshot["id"] if snapshot else None,
             "quote_valid_until": valid_until.isoformat(),
             "candidates": [asdict(item) for item in quote.candidates],
         }
 
-    def _insert_pricing_quote(self, conn: sqlite3.Connection, task_id: int, order: TaskOrder) -> dict:
-        preview = self._pricing_preview_from_order(conn, order)
+    def _insert_pricing_quote(
+        self, conn: sqlite3.Connection, task_id: int, order: TaskOrder, engagement_mode: str = QUICK_API_MODE
+    ) -> dict:
+        mode = self._normalize_engagement_mode(engagement_mode)
+        preview = self._pricing_preview_from_order(conn, order, engagement_mode=mode)
         now = self._utcnow().isoformat()
         version_row = conn.execute(
             "SELECT COALESCE(MAX(version), 0) AS v FROM pricing_quotes WHERE task_id = ?",
@@ -565,6 +846,7 @@ class TokenTraderService:
                 task_id,
                 version,
                 status,
+                engagement_mode,
                 exchange_rate_snapshot_id,
                 recommended_mana_min,
                 recommended_mana_max,
@@ -577,11 +859,12 @@ class TokenTraderService:
                 valid_until,
                 created_at
             )
-            VALUES (?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 task_id,
                 version,
+                mode,
                 preview["exchange_rate_snapshot_id"],
                 preview["recommended_mana_min"],
                 preview["recommended_mana_max"],
@@ -592,7 +875,15 @@ class TokenTraderService:
                 preview["platform_fee_mana"],
                 json.dumps(
                     {
+                        "engagement_mode": mode,
+                        "pricing_model": preview["pricing_model"],
                         "order": asdict(order),
+                        "pricing_breakdown": {
+                            "risk_buffer_mana": preview["risk_buffer_mana"],
+                            "platform_fee_mana": preview["platform_fee_mana"],
+                            "specialist_premium_mana": preview["specialist_premium_mana"],
+                            "verification_buffer_mana": preview["verification_buffer_mana"],
+                        },
                         "candidates": preview["candidates"],
                     },
                     ensure_ascii=True,
@@ -625,6 +916,7 @@ class TokenTraderService:
             "id": row["id"],
             "version": row["version"],
             "status": row["status"],
+            "engagement_mode": row["engagement_mode"],
             "recommended_mana_min": row["recommended_mana_min"],
             "recommended_mana_max": row["recommended_mana_max"],
             "minimum_publish_mana": row["minimum_publish_mana"],
@@ -632,6 +924,9 @@ class TokenTraderService:
             "estimated_external_cost_mana_max": row["estimated_external_cost_mana_max"],
             "risk_buffer_mana": row["risk_buffer_mana"],
             "platform_fee_mana": row["platform_fee_mana"],
+            "specialist_premium_mana": payload.get("pricing_breakdown", {}).get("specialist_premium_mana", 0),
+            "verification_buffer_mana": payload.get("pricing_breakdown", {}).get("verification_buffer_mana", 0),
+            "pricing_model": payload.get("pricing_model", "api_cost_plus_execution"),
             "exchange_rate_snapshot_id": row["exchange_rate_snapshot_id"],
             "quote_valid_until": row["valid_until"],
             "payload": payload,
@@ -838,17 +1133,17 @@ class TokenTraderService:
             )
             VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)
             """,
-            (
-                user_id,
-                "General AI freelancer",
-                f"{name} can take on AI production work.",
-                json.dumps([], ensure_ascii=True),
-                "Generalist",
-                "Verified",
-                now,
-                now,
-            ),
-        )
+                (
+                    user_id,
+                    "Independent claw operator",
+                    f"{name} is ready to take on quick API work and specialist projects.",
+                    json.dumps([], ensure_ascii=True),
+                    "Open to multiple categories",
+                    "Verified",
+                    now,
+                    now,
+                ),
+            )
 
     def _create_user(self, conn: sqlite3.Connection, email: str, password: str, name: str) -> dict:
         normalized_email, normalized_password = self._validate_credentials(email, password)
@@ -892,12 +1187,14 @@ class TokenTraderService:
         return self._serialize_user(conn, row)
 
     def _task_order_from_payload(self, payload: dict) -> TaskOrder:
-        tier = QualityTier(str(payload.get("quality_tier", QualityTier.BALANCED.value)))
+        mode = self._normalize_engagement_mode(payload.get("engagement_mode", QUICK_API_MODE))
+        defaults = MODE_CATALOG[mode]["publish_defaults"]
+        tier = QualityTier(str(payload.get("quality_tier", defaults["quality_tier"])))
         return TaskOrder(
-            task_type=str(payload.get("task_type", "general")).strip() or "general",
-            prompt_tokens=int(payload.get("prompt_tokens", 1000)),
-            max_latency_ms=int(payload.get("max_latency_ms", 1600)),
-            budget_credits=float(payload.get("budget_credits", 1.0)),
+            task_type=str(payload.get("task_type", defaults["task_type"])).strip() or defaults["task_type"],
+            prompt_tokens=int(payload.get("prompt_tokens", defaults["prompt_tokens"])),
+            max_latency_ms=int(payload.get("max_latency_ms", defaults["max_latency_ms"])),
+            budget_credits=float(payload.get("budget_credits", defaults["budget_credits"])),
             quality_tier=tier,
         )
 
@@ -1086,46 +1383,51 @@ class TokenTraderService:
         now = self._utcnow().isoformat()
         demos = [
             {
-                "title": "Series A follow-up deck refresh",
-                "category": "Decks",
-                "public_brief": "Need a claw to turn raw traction notes into a sharp investor follow-up deck for warm leads.",
-                "private_brief": "Private scope includes the current deck, metrics sheet, investor names, and sensitive pricing updates.",
-                "reward_mana": 72,
-                "prompt_tokens": 1800,
-                "max_latency_ms": 1700,
-                "budget_credits": 1.35,
-                "quality_tier": "premium",
-                "task_type": "presentation",
-                "provider": "provider_c",
-                "model": "premium-llm-x",
-            },
-            {
-                "title": "Customer interview synthesis for product strategy",
-                "category": "Research",
-                "public_brief": "Looking for someone to distill 12 interviews into patterns, objections, and product recommendations.",
-                "private_brief": "Private scope includes transcript excerpts, customer names, roadmap assumptions, and churn notes.",
-                "reward_mana": 58,
-                "prompt_tokens": 1600,
-                "max_latency_ms": 1600,
-                "budget_credits": 1.15,
+                "engagement_mode": QUICK_API_MODE,
+                "title": "Quick API: classify support tickets overnight",
+                "category": "Operations",
+                "public_brief": "Need a fast claw to pull a CSV, label tickets into five buckets, and push back a JSON summary before morning.",
+                "private_brief": "Private scope includes the ticket export link, category rubric, and callback payload expected by our internal ops bot.",
+                "reward_mana": 42,
+                "prompt_tokens": 1200,
+                "max_latency_ms": 1400,
+                "budget_credits": 0.9,
                 "quality_tier": "balanced",
                 "task_type": "analysis",
                 "provider": "provider_b",
                 "model": "balanced-llm-v2",
             },
             {
-                "title": "Marketplace unit economics model",
+                "engagement_mode": EXPERT_POLISH_MODE,
+                "title": "Expert Polish: Series A follow-up deck refresh",
+                "category": "Decks",
+                "public_brief": "Need a top claw team to turn raw traction notes into a sharp investor follow-up deck for warm leads.",
+                "private_brief": "Private scope includes the current deck, metrics sheet, investor names, and sensitive pricing updates.",
+                "reward_mana": 96,
+                "prompt_tokens": 2100,
+                "max_latency_ms": 2400,
+                "budget_credits": 1.8,
+                "quality_tier": "premium",
+                "task_type": "presentation",
+                "provider": "provider_c",
+                "model": "premium-llm-x",
+                "secondary_verification_note": "Confirm the deck owner, revision cadence, and confidentiality boundaries before the full materials unlock.",
+            },
+            {
+                "engagement_mode": EXPERT_POLISH_MODE,
+                "title": "Expert Polish: marketplace unit economics model",
                 "category": "Finance",
-                "public_brief": "Need a freelancer to build a simple but credible unit economics and hiring model for a marketplace pitch.",
+                "public_brief": "Need a specialist claw to build a board-ready unit economics and hiring model for a marketplace pitch.",
                 "private_brief": "Private scope includes payroll assumptions, CAC experiments, vendor payouts, and run-rate metrics.",
-                "reward_mana": 80,
-                "prompt_tokens": 1700,
-                "max_latency_ms": 1800,
-                "budget_credits": 1.4,
+                "reward_mana": 104,
+                "prompt_tokens": 2200,
+                "max_latency_ms": 2600,
+                "budget_credits": 1.95,
                 "quality_tier": "premium",
                 "task_type": "spreadsheet",
                 "provider": "provider_c",
                 "model": "premium-llm-x",
+                "secondary_verification_note": "Confirm the finance lead, review milestone, and source-of-truth assumptions before opening the private scope.",
             },
         ]
         for demo in demos:
@@ -1161,20 +1463,27 @@ class TokenTraderService:
                     accepted_bid_id,
                     review_submitted,
                     task_type,
+                    engagement_mode,
+                    secondary_verification_required,
+                    secondary_verification_status,
+                    secondary_verification_note,
                     created_at,
                     updated_at,
                     completed_at
                 )
-                VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 'sealed_after_award', 'open', ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 0, ?, ?, ?, NULL)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     None,
                     client_id,
+                    None,
                     demo["title"],
                     demo["public_brief"],
                     demo["public_brief"],
                     self._encrypt_text(demo["private_brief"]),
                     demo["category"],
+                    "sealed_after_claim" if demo["engagement_mode"] == QUICK_API_MODE else "sealed_after_verification",
+                    TASK_STATUS_OPEN,
                     demo["reward_mana"],
                     demo["prompt_tokens"],
                     demo["max_latency_ms"],
@@ -1182,13 +1491,22 @@ class TokenTraderService:
                     demo["quality_tier"],
                     demo["provider"],
                     demo["model"],
+                    None,
+                    None,
+                    None,
+                    0,
                     demo["task_type"],
+                    demo["engagement_mode"],
+                    1 if demo["engagement_mode"] == EXPERT_POLISH_MODE else 0,
+                    "pending" if demo["engagement_mode"] == EXPERT_POLISH_MODE else "not_required",
+                    demo.get("secondary_verification_note"),
                     now,
                     now,
+                    None,
                 ),
             )
             task_id = int(cur.lastrowid)
-            self._insert_pricing_quote(conn, task_id, order)
+            self._insert_pricing_quote(conn, task_id, order, engagement_mode=str(demo["engagement_mode"]))
             conn.execute(
                 """
                 INSERT INTO task_escrows (task_id, creator_id, payee_id, status, held_mana, released_mana, refunded_mana, created_at, updated_at)
@@ -1270,9 +1588,82 @@ class TokenTraderService:
             "created_at": row["created_at"],
         }
 
+    def _can_view_private_scope(self, row: sqlite3.Row, viewer_id: int) -> bool:
+        if viewer_id == row["creator_id"]:
+            return True
+        if viewer_id != row["assignee_id"]:
+            return False
+        mode = self._normalize_engagement_mode(row["engagement_mode"])
+        if mode == QUICK_API_MODE:
+            return row["status"] in {TASK_STATUS_AWARDED, TASK_STATUS_DONE}
+        if not row["secondary_verification_required"]:
+            return row["status"] in {TASK_STATUS_AWARDED, TASK_STATUS_DONE}
+        return row["secondary_verification_status"] == "approved" and row["status"] in {
+            TASK_STATUS_AWARDED,
+            TASK_STATUS_DONE,
+        }
+
+    def _private_scope_status(self, row: sqlite3.Row, can_view_private: bool) -> str:
+        if can_view_private:
+            return "Unlocked"
+        mode = self._normalize_engagement_mode(row["engagement_mode"])
+        if mode == QUICK_API_MODE:
+            return "Sealed until a claw claims this API lane."
+        if row["status"] == TASK_STATUS_VERIFYING:
+            return "Selected team is waiting on secondary verification before the sealed scope opens."
+        return "Sealed until the client shortlists and verifies an expert team."
+
+    def _task_status_label(self, row: sqlite3.Row) -> str:
+        mode = self._normalize_engagement_mode(row["engagement_mode"])
+        labels = {
+            QUICK_API_MODE: {
+                TASK_STATUS_OPEN: "Open for claim",
+                TASK_STATUS_AWARDED: "In delivery",
+                TASK_STATUS_NEEDS_REWORK: "Needs rework",
+                TASK_STATUS_DONE: "Completed",
+            },
+            EXPERT_POLISH_MODE: {
+                TASK_STATUS_OPEN: "Open for proposals",
+                TASK_STATUS_VERIFYING: "Awaiting verification",
+                TASK_STATUS_AWARDED: "In delivery",
+                TASK_STATUS_NEEDS_REWORK: "Needs rework",
+                TASK_STATUS_DONE: "Completed",
+            },
+        }
+        return labels.get(mode, {}).get(row["status"], str(row["status"]).replace("_", " ").title())
+
+    def _task_workflow_state(self, row: sqlite3.Row) -> str:
+        mode = self._normalize_engagement_mode(row["engagement_mode"])
+        if mode == QUICK_API_MODE:
+            return {
+                TASK_STATUS_OPEN: "Awaiting instant claim",
+                TASK_STATUS_AWARDED: "In fast delivery",
+                TASK_STATUS_NEEDS_REWORK: "Needs another pass from the assigned claw",
+                TASK_STATUS_DONE: "Closed with payout released",
+            }.get(row["status"], "In quick lane")
+        return {
+            TASK_STATUS_OPEN: "Taking proposals",
+            TASK_STATUS_VERIFYING: "Pending second check",
+            TASK_STATUS_AWARDED: "Verified and in delivery",
+            TASK_STATUS_NEEDS_REWORK: "Returned for another pass before approval",
+            TASK_STATUS_DONE: "Closed with expert review",
+        }.get(row["status"], "In expert lane")
+
+    def _task_board_status(self, row: sqlite3.Row) -> tuple[str, str]:
+        mapping = {
+            TASK_STATUS_OPEN: ("open", "Open"),
+            TASK_STATUS_VERIFYING: ("in_progress", "In progress"),
+            TASK_STATUS_AWARDED: ("in_progress", "In progress"),
+            TASK_STATUS_NEEDS_REWORK: ("needs_rework", "Needs rework"),
+            TASK_STATUS_DONE: ("done", "Completed"),
+        }
+        return mapping.get(str(row["status"]), ("other", str(row["status"]).replace("_", " ").title()))
+
     def _serialize_task(self, conn: sqlite3.Connection, row: sqlite3.Row, viewer_id: int) -> dict:
-        can_view_private = viewer_id in {row["creator_id"], row["assignee_id"]}
-        bid_rows = self._task_bid_rows(conn, int(row["id"]))
+        mode = self._normalize_engagement_mode(row["engagement_mode"])
+        mode_profile = self._mode_profile(mode)
+        can_view_private = self._can_view_private_scope(row, viewer_id)
+        bid_rows = self._task_bid_rows(conn, int(row["id"])) if mode == EXPERT_POLISH_MODE else []
         visible_bids: list[dict]
         if viewer_id == row["creator_id"] or viewer_id == row["assignee_id"]:
             visible_bids = [self._serialize_bid(bid, viewer_id, int(row["creator_id"])) for bid in bid_rows]
@@ -1287,21 +1678,32 @@ class TokenTraderService:
         pricing = self._load_pricing_quote(conn, int(row["id"]))
         escrow = self._load_task_escrow(conn, int(row["id"]))
         submissions = [self._serialize_submission(item) for item in self._task_submission_rows(conn, int(row["id"]))[:3]]
+        verification_required = bool(row["secondary_verification_required"])
+        verification_status = row["secondary_verification_status"] or (
+            "pending" if verification_required else "not_required"
+        )
+        board_status, board_status_label = self._task_board_status(row)
         return {
             "id": row["id"],
             "title": row["title"],
             "category": row["category"],
             "public_brief": row["public_brief"] or row["brief"],
             "private_brief": private_brief,
-            "private_scope_status": "Unlocked" if can_view_private else "Sealed until a bid is awarded.",
+            "private_scope_status": self._private_scope_status(row, can_view_private),
             "visibility": row["visibility"],
             "status": row["status"],
+            "status_label": self._task_status_label(row),
+            "board_status": board_status,
+            "board_status_label": board_status_label,
+            "workflow_state": self._task_workflow_state(row),
             "reward_mana": row["reward_mana"],
             "prompt_tokens": row["prompt_tokens"],
             "max_latency_ms": row["max_latency_ms"],
             "budget_credits": row["budget_credits"],
             "quality_tier": row["quality_tier"],
             "task_type": row["task_type"],
+            "engagement_mode": mode,
+            "mode": mode_profile,
             "deliverable": row["deliverable"],
             "external_ref": row["external_ref"],
             "created_at": row["created_at"],
@@ -1311,6 +1713,10 @@ class TokenTraderService:
             "model": row["model"],
             "bid_count": len(bid_rows),
             "accepted_bid_id": row["accepted_bid_id"],
+            "secondary_verification_required": verification_required,
+            "secondary_verification_status": verification_status,
+            "secondary_verification_note": row["secondary_verification_note"],
+            "rework_note": row["rework_note"],
             "creator": {
                 "id": row["creator_id"],
                 "name": row["creator_name"],
@@ -1324,11 +1730,25 @@ class TokenTraderService:
                 "name": row["assignee_name"],
                 "headline": row["assignee_headline"],
             },
-            "can_bid": row["status"] == "open" and viewer_id != row["creator_id"],
-            "can_award": row["status"] == "open" and viewer_id == row["creator_id"],
-            "can_complete": row["status"] == "awarded" and viewer_id == row["assignee_id"],
-            "can_review": row["status"] == "done" and viewer_id == row["creator_id"] and not row["review_submitted"],
+            "can_claim": mode == QUICK_API_MODE and row["status"] == TASK_STATUS_OPEN and viewer_id != row["creator_id"],
+            "can_bid": mode == EXPERT_POLISH_MODE and row["status"] == TASK_STATUS_OPEN and viewer_id != row["creator_id"],
+            "can_award": mode == EXPERT_POLISH_MODE and row["status"] == TASK_STATUS_OPEN and viewer_id == row["creator_id"],
+            "can_verify": (
+                mode == EXPERT_POLISH_MODE
+                and row["status"] == TASK_STATUS_VERIFYING
+                and viewer_id == row["creator_id"]
+                and row["assignee_id"] is not None
+            ),
+            "can_complete": row["status"] in {TASK_STATUS_AWARDED, TASK_STATUS_NEEDS_REWORK} and viewer_id == row["assignee_id"],
+            "can_review": row["status"] == TASK_STATUS_DONE and viewer_id == row["creator_id"] and not row["review_submitted"],
+            "can_request_rework": (
+                row["status"] in {TASK_STATUS_AWARDED, TASK_STATUS_NEEDS_REWORK}
+                and viewer_id == row["creator_id"]
+                and row["assignee_id"] is not None
+            ),
             "can_view_private": can_view_private,
+            "is_creator": viewer_id == row["creator_id"],
+            "is_assignee": viewer_id == row["assignee_id"],
             "accepted_bid": accepted_bid,
             "bids": visible_bids,
             "review": self._task_review(conn, int(row["id"])),
@@ -1355,8 +1775,10 @@ class TokenTraderService:
             ORDER BY
                 CASE t.status
                     WHEN 'open' THEN 0
-                    WHEN 'awarded' THEN 1
-                    ELSE 2
+                    WHEN 'verifying' THEN 1
+                    WHEN 'awarded' THEN 2
+                    WHEN 'needs_rework' THEN 3
+                    ELSE 4
                 END,
                 t.updated_at DESC
             LIMIT 24
@@ -1449,6 +1871,57 @@ class TokenTraderService:
             ],
         }
 
+    def get_settings(self, token: str) -> dict:
+        with self._connect() as conn:
+            user = self._require_user(conn, token)
+            settings = self._load_user_settings(conn, int(user["id"]))
+        return {"settings": settings}
+
+    def update_settings(self, token: str, payload: dict) -> dict:
+        with self._connect() as conn:
+            user = self._require_user(conn, token)
+            current = self._load_user_settings(conn, int(user["id"]))
+            raw_intake_mode = payload.get("intake_mode")
+            quick_enabled = self._truthy(payload.get("quick_api_enabled", current["quick_api_enabled"]))
+            expert_enabled = self._truthy(payload.get("expert_polish_enabled", current["expert_polish_enabled"]))
+            if raw_intake_mode not in {None, ""}:
+                intake_mode = self._normalize_intake_mode(str(raw_intake_mode))
+                quick_enabled = intake_mode in {"both", "quick_only"}
+                expert_enabled = intake_mode in {"both", "expert_only"}
+            else:
+                intake_mode = self._derive_intake_mode(quick_enabled, expert_enabled)
+            auto_claim_quick = self._truthy(payload.get("auto_claim_quick", current["auto_claim_quick"]))
+            notify_on_rework = self._truthy(payload.get("notify_on_rework", current["notify_on_rework"]))
+            callback_url = str(payload.get("callback_url", current["callback_url"])).strip()
+            if callback_url and not callback_url.startswith(("http://", "https://")):
+                raise ValueError("Callback URL must start with http:// or https://")
+            now = self._utcnow().isoformat()
+            conn.execute(
+                """
+                UPDATE user_settings
+                SET intake_mode = ?,
+                    quick_api_enabled = ?,
+                    expert_polish_enabled = ?,
+                    auto_claim_quick = ?,
+                    notify_on_rework = ?,
+                    callback_url = ?,
+                    updated_at = ?
+                WHERE user_id = ?
+                """,
+                (
+                    intake_mode,
+                    1 if quick_enabled else 0,
+                    1 if expert_enabled else 0,
+                    1 if auto_claim_quick else 0,
+                    1 if notify_on_rework else 0,
+                    callback_url or None,
+                    now,
+                    user["id"],
+                ),
+            )
+            settings = self._load_user_settings(conn, int(user["id"]))
+        return {"settings": settings}
+
     def list_api_keys(self, token: str) -> dict:
         with self._connect() as conn:
             user = self._require_user(conn, token)
@@ -1525,17 +1998,24 @@ class TokenTraderService:
             return self._latest_exchange_rates(conn)
 
     def preview_pricing(self, token: str, payload: dict) -> dict:
+        mode = self._normalize_engagement_mode(payload.get("engagement_mode", QUICK_API_MODE))
         order = self._task_order_from_payload(payload)
         with self._connect() as conn:
             self._require_user(conn, token)
-            preview = self._pricing_preview_from_order(conn, order)
-        return {"pricing_preview": preview, "order": asdict(order)}
+            preview = self._pricing_preview_from_order(conn, order, engagement_mode=mode)
+        return {"pricing_preview": preview, "order": asdict(order), "mode": self._mode_profile(mode)}
 
-    def list_open_tasks(self, token: str) -> dict:
+    def list_open_tasks(self, token: str, mode: str | None = None) -> dict:
         with self._connect() as conn:
             user = self._require_user(conn, token)
+            mode_filter = self._normalize_engagement_mode(mode) if mode else None
+            params: list[object] = []
+            where_clause = "WHERE t.status = 'open'"
+            if mode_filter:
+                where_clause += " AND t.engagement_mode = ?"
+                params.append(mode_filter)
             rows = conn.execute(
-                """
+                f"""
                 SELECT
                     t.*,
                     creator.name AS creator_name,
@@ -1548,12 +2028,14 @@ class TokenTraderService:
                 JOIN profiles creator_profile ON creator_profile.user_id = creator.id
                 LEFT JOIN users assignee ON assignee.id = t.assignee_id
                 LEFT JOIN profiles assignee_profile ON assignee_profile.user_id = assignee.id
-                WHERE t.status = 'open'
+                {where_clause}
                 ORDER BY t.updated_at DESC, t.id DESC
                 """
+                ,
+                params,
             ).fetchall()
             tasks = [self._serialize_task(conn, row, int(user["id"])) for row in rows]
-        return {"tasks": tasks}
+        return {"tasks": tasks, "mode": self._mode_profile(mode_filter or QUICK_API_MODE) if mode_filter else None}
 
     def get_task_pricing(self, token: str, task_id: int) -> dict:
         if task_id <= 0:
@@ -1595,8 +2077,8 @@ class TokenTraderService:
             task = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
             if not task:
                 raise ValueError("Task not found.")
-            if task["assignee_id"] != user["id"] or task["status"] != "awarded":
-                raise PermissionError("Only the awarded claw can submit work on this task.")
+            if task["assignee_id"] != user["id"] or task["status"] not in {TASK_STATUS_AWARDED, TASK_STATUS_NEEDS_REWORK}:
+                raise PermissionError("Only the assigned claw can submit work on this task.")
             version_row = conn.execute(
                 "SELECT COALESCE(MAX(version), 0) AS v FROM task_submissions WHERE task_id = ?",
                 (task_id,),
@@ -1619,12 +2101,44 @@ class TokenTraderService:
                 """,
                 (int(cur.lastrowid),),
             ).fetchone()
+            conn.execute("UPDATE tasks SET updated_at = ? WHERE id = ?", (now, task_id))
         return {"submission": self._serialize_submission(row)}
+
+    def request_rework(self, token: str, payload: dict) -> dict:
+        task_id = int(payload.get("task_id", 0))
+        rework_note = str(payload.get("rework_note", "")).strip()
+        if task_id <= 0:
+            raise ValueError("Missing task_id.")
+        if len(rework_note) < 12:
+            raise ValueError("Rework note must be at least 12 characters.")
+        with self._connect() as conn:
+            user = self._require_user(conn, token)
+            task = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            if not task:
+                raise ValueError("Task not found.")
+            if task["creator_id"] != user["id"]:
+                raise PermissionError("Only the task creator can request rework.")
+            if task["assignee_id"] is None:
+                raise ValueError("This task has not been assigned yet.")
+            if task["status"] not in {TASK_STATUS_AWARDED, TASK_STATUS_NEEDS_REWORK}:
+                raise ValueError("Only active assigned tasks can be returned for rework.")
+            now = self._utcnow().isoformat()
+            conn.execute(
+                """
+                UPDATE tasks
+                SET status = ?, rework_note = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (TASK_STATUS_NEEDS_REWORK, rework_note, now, task_id),
+            )
+            row = next(row for row in self._task_rows(conn) if int(row["id"]) == task_id)
+            task_data = self._serialize_task(conn, row, int(user["id"]))
+        return {"task": task_data}
 
     def update_profile(self, token: str, payload: dict) -> dict:
         headline = str(payload.get("headline", "")).strip()
         bio = str(payload.get("bio", "")).strip()
-        focus_area = str(payload.get("focus_area", "Generalist")).strip() or "Generalist"
+        focus_area = str(payload.get("focus_area", "Open to multiple categories")).strip() or "Open to multiple categories"
         raw_skills = str(payload.get("skills", "")).strip()
         skills = [item.strip() for item in raw_skills.split(",") if item.strip()][:PROFILE_SKILLS_LIMIT]
         if len(headline) < 6:
@@ -1648,7 +2162,11 @@ class TokenTraderService:
     def get_dashboard(self, token: str, task_id: int | None = None) -> dict:
         with self._connect() as conn:
             user = self._require_user(conn, token)
+            self._sync_wallet(conn, int(user["id"]))
+            wallet_row = conn.execute("SELECT * FROM wallets WHERE user_id = ?", (user["id"],)).fetchone()
             profile = self._load_profile(conn, int(user["id"]))
+            settings = self._load_user_settings(conn, int(user["id"]))
+            capability_scores = self._profile_capability_scores(conn, int(user["id"]))
             rows = self._task_rows(conn)
             tasks = [self._serialize_task(conn, row, int(user["id"])) for row in rows]
             selected_id = task_id or (tasks[0]["id"] if tasks else None)
@@ -1680,22 +2198,88 @@ class TokenTraderService:
                 LIMIT 10
                 """
             ).fetchall()
+            api_key_rows = conn.execute(
+                """
+                SELECT id, name, key_prefix, scopes_json, status, expires_at, last_used_at, created_at
+                FROM api_keys
+                WHERE user_id = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT 5
+                """,
+                (user["id"],),
+            ).fetchall()
             my_bids = conn.execute(
                 "SELECT COUNT(*) AS c FROM task_bids WHERE bidder_id = ?",
                 (user["id"],),
             ).fetchone()["c"]
             open_tasks = conn.execute(
-                "SELECT COUNT(*) AS c FROM tasks WHERE status IN ('open', 'awarded')",
+                "SELECT COUNT(*) AS c FROM tasks WHERE status IN ('open', 'verifying', 'awarded', 'needs_rework')",
             ).fetchone()["c"]
             closed_tasks = conn.execute(
                 "SELECT COUNT(*) AS c FROM tasks WHERE status = 'done'",
             ).fetchone()["c"]
             locked_mana = conn.execute(
-                "SELECT COALESCE(SUM(reward_mana), 0) AS c FROM tasks WHERE status IN ('open', 'awarded')",
+                "SELECT COALESCE(SUM(reward_mana), 0) AS c FROM tasks WHERE status IN ('open', 'verifying', 'awarded', 'needs_rework')",
             ).fetchone()["c"]
+            directory = [
+                {
+                    "name": row["name"],
+                    "email": row["email"],
+                    "headline": row["headline"],
+                    "focus_area": row["focus_area"],
+                    "skills": json.loads(row["skills_json"]) if row["skills_json"] else [],
+                    "verification_level": row["verification_level"],
+                    "avg_rating": round(float(row["avg_rating"]), 2),
+                    "completed_jobs": row["completed_jobs"],
+                }
+                for row in directory_rows
+            ]
+            api_keys_preview = [
+                {
+                    "id": row["id"],
+                    "name": row["name"],
+                    "prefix": row["key_prefix"],
+                    "scopes": json.loads(row["scopes_json"]) if row["scopes_json"] else [],
+                    "status": row["status"],
+                    "expires_at": row["expires_at"],
+                    "last_used_at": row["last_used_at"],
+                    "created_at": row["created_at"],
+                }
+                for row in api_key_rows
+            ]
+            lanes: dict[str, dict] = {}
+            for lane_id in (QUICK_API_MODE, EXPERT_POLISH_MODE):
+                lane_tasks = [task for task in tasks if task["engagement_mode"] == lane_id]
+                lanes[lane_id] = {
+                    "meta": self._mode_profile(lane_id),
+                    "stats": {
+                        "open": sum(1 for task in lane_tasks if task["status"] == TASK_STATUS_OPEN),
+                        "verifying": sum(1 for task in lane_tasks if task["status"] == TASK_STATUS_VERIFYING),
+                        "in_delivery": sum(1 for task in lane_tasks if task["status"] == TASK_STATUS_AWARDED),
+                        "needs_rework": sum(1 for task in lane_tasks if task["status"] == TASK_STATUS_NEEDS_REWORK),
+                        "done": sum(1 for task in lane_tasks if task["status"] == TASK_STATUS_DONE),
+                        "published_by_me": sum(1 for task in lane_tasks if task["creator"]["id"] == user["id"]),
+                        "assigned_to_me": sum(
+                            1
+                            for task in lane_tasks
+                            if task["assignee"] and int(task["assignee"]["id"]) == int(user["id"])
+                        ),
+                    },
+                    "tasks": lane_tasks,
+                }
             return {
                 "user": user,
                 "profile": profile,
+                "wallet": {
+                    "user_id": user["id"],
+                    "available_mana": wallet_row["available_mana"],
+                    "held_mana": wallet_row["held_mana"],
+                    "lifetime_earned_mana": wallet_row["lifetime_earned_mana"],
+                    "lifetime_spent_mana": wallet_row["lifetime_spent_mana"],
+                    "updated_at": wallet_row["updated_at"],
+                },
+                "settings": settings,
+                "capability_scores": capability_scores,
                 "stats": {
                     "open_tasks": int(open_tasks),
                     "closed_tasks": int(closed_tasks),
@@ -1704,19 +2288,12 @@ class TokenTraderService:
                 },
                 "tasks": tasks,
                 "selected_task": selected_task,
-                "directory": [
-                    {
-                        "name": row["name"],
-                        "email": row["email"],
-                        "headline": row["headline"],
-                        "focus_area": row["focus_area"],
-                        "skills": json.loads(row["skills_json"]) if row["skills_json"] else [],
-                        "verification_level": row["verification_level"],
-                        "avg_rating": round(float(row["avg_rating"]), 2),
-                        "completed_jobs": row["completed_jobs"],
-                    }
-                    for row in directory_rows
-                ],
+                "directory": directory,
+                "specialists": [
+                    item for item in directory if item["verification_level"] in {"Rated", "Top Rated"}
+                ][:4],
+                "api_keys_preview": api_keys_preview,
+                "lanes": lanes,
                 "ledger": [
                     {
                         "id": row["id"],
@@ -1740,19 +2317,28 @@ class TokenTraderService:
                     for offer in DEFAULT_OFFERS
                 ],
                 "privacy_notes": [
-                    "Public briefs are visible to all claws.",
-                    "Private scope is sealed until the creator awards a bid.",
+                    "Quick API briefs unlock after instant claim; Expert Polish briefs unlock after verification.",
+                    "Public summaries stay visible while the sensitive scope remains sealed.",
                     "Private scope is encrypted at rest with an application secret in this prototype.",
                     "For production, replace the built-in cipher with AES-GCM plus KMS-backed key rotation.",
                 ],
             }
 
     def create_task(self, token: str, payload: dict) -> dict:
+        engagement_mode = self._normalize_engagement_mode(payload.get("engagement_mode", QUICK_API_MODE))
+        mode_profile = self._mode_profile(engagement_mode)
         title = str(payload.get("title", "")).strip()
         category = str(payload.get("category", "General")).strip() or "General"
         public_brief = str(payload.get("public_brief") or payload.get("brief") or "").strip()
         private_brief = str(payload.get("private_brief", "")).strip()
-        reward_mana = int(payload.get("reward_mana", 48))
+        reward_mana = int(payload.get("reward_mana", mode_profile["publish_defaults"]["reward_mana"]))
+        verification_required = bool(mode_profile["requires_secondary_verification"])
+        secondary_verification_note = str(payload.get("secondary_verification_note", "")).strip() or (
+            "Confirm the final delivery owner, sample quality bar, and confidentiality readiness before the sealed scope opens."
+            if verification_required
+            else ""
+        )
+        visibility = "sealed_after_claim" if engagement_mode == QUICK_API_MODE else "sealed_after_verification"
         if len(title) < 4:
             raise ValueError("Task title must be at least 4 characters.")
         if len(public_brief) < 18:
@@ -1764,7 +2350,7 @@ class TokenTraderService:
         order = self._task_order_from_payload(payload)
         with self._connect() as conn:
             user = self._require_user(conn, token)
-            pricing_preview = self._pricing_preview_from_order(conn, order)
+            pricing_preview = self._pricing_preview_from_order(conn, order, engagement_mode=engagement_mode)
             if self._get_balance(conn, int(user["id"])) < reward_mana:
                 raise ValueError("Not enough mana to publish this bounty.")
             if reward_mana < pricing_preview["minimum_publish_mana"]:
@@ -1798,20 +2384,27 @@ class TokenTraderService:
                     accepted_bid_id,
                     review_submitted,
                     task_type,
+                    engagement_mode,
+                    secondary_verification_required,
+                    secondary_verification_status,
+                    secondary_verification_note,
                     created_at,
                     updated_at,
                     completed_at
                 )
-                VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 'sealed_after_award', 'open', ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 0, ?, ?, ?, NULL)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     None,
                     user["id"],
+                    None,
                     title,
                     public_brief,
                     public_brief,
                     self._encrypt_text(private_brief),
                     category,
+                    visibility,
+                    TASK_STATUS_OPEN,
                     reward_mana,
                     order.prompt_tokens,
                     order.max_latency_ms,
@@ -1819,13 +2412,22 @@ class TokenTraderService:
                     order.quality_tier.value,
                     preferred["provider"] if preferred else None,
                     preferred["model"] if preferred else None,
+                    None,
+                    None,
+                    None,
+                    0,
                     order.task_type,
+                    engagement_mode,
+                    1 if verification_required else 0,
+                    "pending" if verification_required else "not_required",
+                    secondary_verification_note or None,
                     now,
                     now,
+                    None,
                 ),
             )
             task_id = int(cur.lastrowid)
-            pricing = self._insert_pricing_quote(conn, task_id, order)
+            pricing = self._insert_pricing_quote(conn, task_id, order, engagement_mode=engagement_mode)
             conn.execute(
                 """
                 INSERT INTO task_escrows (task_id, creator_id, payee_id, status, held_mana, released_mana, refunded_mana, created_at, updated_at)
@@ -1855,9 +2457,11 @@ class TokenTraderService:
             task = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
             if not task:
                 raise ValueError("Task not found.")
+            if self._normalize_engagement_mode(task["engagement_mode"]) != EXPERT_POLISH_MODE:
+                raise ValueError("Quick API tasks do not take proposals. Claim them directly instead.")
             if task["creator_id"] == user["id"]:
                 raise ValueError("Creators cannot bid on their own task.")
-            if task["status"] != "open":
+            if task["status"] != TASK_STATUS_OPEN:
                 raise ValueError("This task is no longer open for bids.")
             existing = conn.execute(
                 "SELECT id FROM task_bids WHERE task_id = ? AND bidder_id = ?",
@@ -1886,6 +2490,42 @@ class TokenTraderService:
             task_data = self._serialize_task(conn, row, int(user["id"]))
         return {"task": task_data}
 
+    def claim_task(self, token: str, payload: dict) -> dict:
+        task_id = int(payload.get("task_id", 0))
+        if task_id <= 0:
+            raise ValueError("Missing task_id.")
+        with self._connect() as conn:
+            user = self._require_user(conn, token)
+            task = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            if not task:
+                raise ValueError("Task not found.")
+            if self._normalize_engagement_mode(task["engagement_mode"]) != QUICK_API_MODE:
+                raise ValueError("Expert Polish tasks require proposals and verification before work starts.")
+            if task["creator_id"] == user["id"]:
+                raise ValueError("Creators cannot claim their own quick task.")
+            if task["status"] != TASK_STATUS_OPEN:
+                raise ValueError("This quick task is no longer open for claim.")
+            now = self._utcnow().isoformat()
+            conn.execute(
+                """
+                UPDATE tasks
+                SET assignee_id = ?, status = ?, secondary_verification_status = 'not_required', updated_at = ?
+                WHERE id = ?
+                """,
+                (user["id"], TASK_STATUS_AWARDED, now, task_id),
+            )
+            conn.execute(
+                """
+                UPDATE task_escrows
+                SET payee_id = ?, updated_at = ?
+                WHERE task_id = ?
+                """,
+                (user["id"], now, task_id),
+            )
+            row = next(row for row in self._task_rows(conn) if int(row["id"]) == task_id)
+            task_data = self._serialize_task(conn, row, int(user["id"]))
+        return {"task": task_data}
+
     def award_bid(self, token: str, payload: dict) -> dict:
         task_id = int(payload.get("task_id", 0))
         bid_id = int(payload.get("bid_id", 0))
@@ -1896,9 +2536,11 @@ class TokenTraderService:
             task = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
             if not task:
                 raise ValueError("Task not found.")
+            if self._normalize_engagement_mode(task["engagement_mode"]) != EXPERT_POLISH_MODE:
+                raise ValueError("Quick API tasks are claimed directly and do not support bid awards.")
             if task["creator_id"] != user["id"]:
                 raise PermissionError("Only the task creator can award a bid.")
-            if task["status"] != "open":
+            if task["status"] != TASK_STATUS_OPEN:
                 raise ValueError("Only open tasks can be awarded.")
             bid = conn.execute(
                 "SELECT * FROM task_bids WHERE id = ? AND task_id = ?",
@@ -1918,10 +2560,54 @@ class TokenTraderService:
             conn.execute(
                 """
                 UPDATE tasks
-                SET assignee_id = ?, accepted_bid_id = ?, status = 'awarded', updated_at = ?
+                SET assignee_id = ?, accepted_bid_id = ?, status = ?, secondary_verification_status = ?, updated_at = ?
                 WHERE id = ?
                 """,
-                (bid["bidder_id"], bid_id, now, task_id),
+                (
+                    bid["bidder_id"],
+                    bid_id,
+                    TASK_STATUS_VERIFYING if task["secondary_verification_required"] else TASK_STATUS_AWARDED,
+                    "pending" if task["secondary_verification_required"] else "approved",
+                    now,
+                    task_id,
+                ),
+            )
+            if not task["secondary_verification_required"]:
+                conn.execute(
+                    """
+                    UPDATE task_escrows
+                    SET payee_id = ?, updated_at = ?
+                    WHERE task_id = ?
+                    """,
+                    (bid["bidder_id"], now, task_id),
+                )
+            row = next(row for row in self._task_rows(conn) if int(row["id"]) == task_id)
+            task_data = self._serialize_task(conn, row, int(user["id"]))
+        return {"task": task_data}
+
+    def approve_secondary_verification(self, token: str, payload: dict) -> dict:
+        task_id = int(payload.get("task_id", 0))
+        if task_id <= 0:
+            raise ValueError("Missing task_id.")
+        with self._connect() as conn:
+            user = self._require_user(conn, token)
+            task = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            if not task:
+                raise ValueError("Task not found.")
+            if self._normalize_engagement_mode(task["engagement_mode"]) != EXPERT_POLISH_MODE:
+                raise ValueError("Only Expert Polish tasks use secondary verification.")
+            if task["creator_id"] != user["id"]:
+                raise PermissionError("Only the task creator can approve secondary verification.")
+            if task["status"] != TASK_STATUS_VERIFYING or task["assignee_id"] is None:
+                raise ValueError("This task is not currently waiting on secondary verification.")
+            now = self._utcnow().isoformat()
+            conn.execute(
+                """
+                UPDATE tasks
+                SET status = ?, secondary_verification_status = 'approved', updated_at = ?
+                WHERE id = ?
+                """,
+                (TASK_STATUS_AWARDED, now, task_id),
             )
             conn.execute(
                 """
@@ -1929,7 +2615,7 @@ class TokenTraderService:
                 SET payee_id = ?, updated_at = ?
                 WHERE task_id = ?
                 """,
-                (bid["bidder_id"], now, task_id),
+                (task["assignee_id"], now, task_id),
             )
             row = next(row for row in self._task_rows(conn) if int(row["id"]) == task_id)
             task_data = self._serialize_task(conn, row, int(user["id"]))
@@ -1948,8 +2634,8 @@ class TokenTraderService:
             task = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
             if not task:
                 raise ValueError("Task not found.")
-            if task["assignee_id"] != user["id"] or task["status"] != "awarded":
-                raise PermissionError("Only the awarded claw can complete this task.")
+            if task["assignee_id"] != user["id"] or task["status"] not in {TASK_STATUS_AWARDED, TASK_STATUS_NEEDS_REWORK}:
+                raise PermissionError("Only the assigned claw can complete this task.")
             route_provider = str(payload.get("provider") or task["provider"] or "").strip()
             route_model = str(payload.get("model") or task["model"] or "").strip()
             route_result = None
@@ -1978,7 +2664,7 @@ class TokenTraderService:
             conn.execute(
                 """
                 UPDATE tasks
-                SET status = 'done', deliverable = ?, external_ref = ?, provider = ?, model = ?, updated_at = ?, completed_at = ?
+                SET status = 'done', deliverable = ?, external_ref = ?, provider = ?, model = ?, rework_note = NULL, updated_at = ?, completed_at = ?
                 WHERE id = ?
                 """,
                 (deliverable, external_ref or None, route_provider or None, route_model or None, now, now, task_id),
